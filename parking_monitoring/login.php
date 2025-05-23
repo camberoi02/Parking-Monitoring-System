@@ -636,21 +636,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 <form id="changePasswordForm" method="post" action="includes/handlers/update_password.php">
                     <div class="mb-3">
                         <label for="new_password" class="form-label">New Password</label>
-                        <div class="input-group">
-                            <input type="password" class="form-control" id="new_password" name="new_password" required>
-                            <button class="btn btn-outline-secondary" type="button" id="toggleNewPassword">
-                                <i class="fas fa-eye"></i>
-                            </button>
-                        </div>
+                        <input type="password" class="form-control" id="new_password" name="new_password" required>
                     </div>
                     <div class="mb-3">
                         <label for="confirm_password" class="form-label">Confirm Password</label>
-                        <div class="input-group">
-                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
-                            <button class="btn btn-outline-secondary" type="button" id="toggleConfirmPassword">
-                                <i class="fas fa-eye"></i>
-                            </button>
-                        </div>
+                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="showPasswords">
+                        <label class="form-check-label" for="showPasswords">Show Passwords</label>
                     </div>
                     <div class="d-grid">
                         <button type="submit" class="btn btn-primary">Change Password</button>
@@ -674,7 +668,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
                 passwordInput.setAttribute('type', type);
         
-        // Toggle eye icon
+                // Toggle eye icon
                 const icon = this.querySelector('i');
                 if (icon) {
                     icon.classList.toggle('fa-eye');
@@ -689,15 +683,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Setup password visibility for change password form
     const showPasswordsCheckbox = document.getElementById('showPasswords');
-    const newPasswordInput = document.getElementById('newPassword');
-    const confirmPasswordInput = document.getElementById('confirmPassword');
+    const newPasswordInput = document.getElementById('new_password');
+    const confirmPasswordInput = document.getElementById('confirm_password');
 
     if (showPasswordsCheckbox && newPasswordInput && confirmPasswordInput) {
         showPasswordsCheckbox.addEventListener('change', function() {
             const type = this.checked ? 'text' : 'password';
             newPasswordInput.type = type;
             confirmPasswordInput.type = type;
-    });
+        });
     }
 });
 </script>
