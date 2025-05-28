@@ -192,24 +192,27 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
                                         <label for="password" class="form-label">Password</label>
                                     </div>
                                     <div class="input-group">
-                                        <span class="input-group-text bg-light border-end-0">
+                                        <span class="input-group-text bg-light">
                                             <i class="fas fa-lock text-primary"></i>
                                         </span>
-                                        <input type="password" name="password" class="form-control border-start-0 border-end-0 <?php echo (!empty($password_err)) ? 'is-invalid' : ''; ?>" 
+                                        <input type="password" name="password" class="form-control <?php echo (!empty($password_err)) ? 'is-invalid' : ''; ?>" 
                                             id="password" placeholder="Enter your password">
-                                        <span class="input-group-text bg-light border-start-0" id="togglePassword" style="cursor: pointer">
+                                        <button type="button" class="input-group-text bg-light password-toggle-btn" id="togglePassword">
                                             <i class="fas fa-eye text-muted"></i>
-                                        </span>
+                                        </button>
                                     </div>
                                     <div class="invalid-feedback d-block"><?php echo $password_err; ?></div>
                                 </div>
                                 
                                 <!-- Remember me checkbox -->
-                                <div class="form-check mb-4">
+                                <div class="form-check mb-4 d-flex justify-content-between align-items-center">
+                                    <div>
                                     <input class="form-check-input" type="checkbox" value="" id="rememberMe">
                                     <label class="form-check-label" for="rememberMe">
                                         Remember me
                                     </label>
+                                    </div>
+                                    <a href="#" class="text-decoration-none" data-bs-toggle="modal" data-bs-target="#forgotPasswordModal">Forgot Password?</a>
                                 </div>
                                 
                                 <!-- Submit button -->
@@ -592,94 +595,153 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
         margin: 1rem;
     }
 }
+
+/* Input group styling */
+.input-group {
+    position: relative;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    width: 100%;
+}
+
+.input-group-text {
+    display: flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #212529;
+    text-align: center;
+    white-space: nowrap;
+    background-color: #f8f9fa;
+    border: 1px solid #ced4da;
+    border-radius: 0;
+}
+
+.input-group > .form-control {
+    position: relative;
+    flex: 1 1 auto;
+    width: 1%;
+    min-width: 0;
+    margin-bottom: 0;
+    border-radius: 0;
+}
+
+.input-group > .input-group-text:first-child {
+    border-top-left-radius: 0.25rem;
+    border-bottom-left-radius: 0.25rem;
+}
+
+.input-group > .input-group-text:last-child {
+    border-top-right-radius: 0.25rem;
+    border-bottom-right-radius: 0.25rem;
+}
+
+.input-group > .form-control:not(:first-child) {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.input-group > .form-control:not(:last-child) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+/* Dark mode adjustments */
+[data-theme="dark"] .input-group-text {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: var(--text-light) !important;
+}
+
+[data-theme="dark"] .form-control {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: var(--text-light) !important;
+}
+
+/* Password toggle button specific styles */
+.password-toggle-btn {
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    padding: 0.375rem 0.75rem;
+    background-color: #f8f9fa;
+    border: 1px solid #ced4da;
+    transition: all 0.2s ease-in-out;
+}
+
+.password-toggle-btn:hover {
+    background-color: #e9ecef;
+}
+
+.password-toggle-btn:active {
+    background-color: #dee2e6;
+}
+
+.password-toggle-btn i {
+    font-size: 1rem;
+    color: #6c757d;
+    transition: color 0.2s ease-in-out;
+}
+
+.password-toggle-btn:hover i {
+    color: #495057;
+}
+
+/* Dark mode adjustments */
+[data-theme="dark"] .password-toggle-btn {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .password-toggle-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .password-toggle-btn:active {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+[data-theme="dark"] .password-toggle-btn i {
+    color: rgba(255, 255, 255, 0.7) !important;
+}
+
+[data-theme="dark"] .password-toggle-btn:hover i {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
 </style>
 
 <!-- JavaScript for password show/hide toggle -->
 <script>
+// Password visibility toggle
 document.addEventListener('DOMContentLoaded', function() {
-    // Password visibility toggle
-    function setupPasswordToggle(inputId, toggleId) {
-        const toggleBtn = document.getElementById(toggleId);
-        const passwordInput = document.getElementById(inputId);
-        
-        if (toggleBtn && passwordInput) {
-            toggleBtn.addEventListener('click', function() {
-                const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-                passwordInput.setAttribute('type', type);
-                
-                // Toggle eye icon
-                const icon = this.querySelector('i');
-                if (icon) {
-                    icon.classList.toggle('fa-eye');
-                    icon.classList.toggle('fa-eye-slash');
+    const togglePassword = document.getElementById('togglePassword');
+    const passwordInput = document.getElementById('password');
+    
+    if (togglePassword && passwordInput) {
+        togglePassword.addEventListener('click', function() {
+            // Toggle the password visibility
+            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+            passwordInput.setAttribute('type', type);
+            
+            // Toggle the eye icon
+            const icon = this.querySelector('i');
+            if (icon) {
+                if (type === 'password') {
+                    icon.classList.remove('fa-eye-slash');
+                    icon.classList.add('fa-eye');
+                } else {
+                    icon.classList.remove('fa-eye');
+                    icon.classList.add('fa-eye-slash');
                 }
-            });
-        }
+            }
+        });
     }
-
-    // Setup password toggles
-    setupPasswordToggle('password', 'togglePassword');
-    setupPasswordToggle('newPassword', 'toggleNewPassword');
-    setupPasswordToggle('confirmPassword', 'toggleConfirmPassword');
-});
-</script>
-
-<!-- Change Password Modal -->
-<div class="modal fade" id="changePasswordModal" tabindex="-1" aria-labelledby="changePasswordModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="changePasswordModalLabel">Change Password</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="changePasswordForm" method="post" action="includes/handlers/update_password.php">
-                    <div class="mb-3">
-                        <label for="new_password" class="form-label">New Password</label>
-                        <input type="password" class="form-control" id="new_password" name="new_password" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="confirm_password" class="form-label">Confirm Password</label>
-                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
-                    </div>
-                    <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="showPasswords">
-                        <label class="form-check-label" for="showPasswords">Show Passwords</label>
-                    </div>
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary">Change Password</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Update the JavaScript section -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Password visibility toggle for login form
-    function setupPasswordToggle(inputId, toggleId) {
-        const toggleBtn = document.getElementById(toggleId);
-        const passwordInput = document.getElementById(inputId);
-        
-        if (toggleBtn && passwordInput) {
-            toggleBtn.addEventListener('click', function() {
-                const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-                passwordInput.setAttribute('type', type);
-        
-                // Toggle eye icon
-                const icon = this.querySelector('i');
-                if (icon) {
-                    icon.classList.toggle('fa-eye');
-                    icon.classList.toggle('fa-eye-slash');
-                }
-            });
-        }
-    }
-
-    // Setup password toggle for login form
-    setupPasswordToggle('password', 'togglePassword');
 
     // Setup password visibility for change password form
     const showPasswordsCheckbox = document.getElementById('showPasswords');
@@ -695,6 +757,60 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
+<!-- Change Password Modal -->
+<div class="modal fade" id="changePasswordModal" tabindex="-1" aria-labelledby="changePasswordModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="changePasswordModalLabel">Change Password</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="changePasswordForm" method="post" action="includes/handlers/update_password.php">
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">New Password</label>
+                            <input type="password" class="form-control" id="new_password" name="new_password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">Confirm Password</label>
+                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                        </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="showPasswords">
+                        <label class="form-check-label" for="showPasswords">Show Passwords</label>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Change Password</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Forgot Password Modal -->
+<div class="modal fade" id="forgotPasswordModal" tabindex="-1" aria-labelledby="forgotPasswordModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="forgotPasswordModalLabel">Forgot Password</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="forgotPasswordForm" method="post" action="includes/handlers/forgot_password.php">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Enter your username</label>
+                        <input type="text" class="form-control" id="forgot_username" name="username" required>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Submit Request</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 
 <?php
 include_once 'includes/footer.php';

@@ -9,6 +9,28 @@ require_once dirname(__FILE__) . '/../config/db_config.php';
             <?php
             // Only try to get logo if database exists
             $has_logo = false;
+            
+            // Get brand text from settings
+            $brand_text = "Parking Monitoring";
+            try {
+                if (mysqli_query($conn, "SHOW DATABASES LIKE '" . DB_NAME . "'")) {
+                    mysqli_select_db($conn, DB_NAME);
+                    // Check if settings table exists and get brand text
+                    $table_result = mysqli_query($conn, "SHOW TABLES LIKE 'settings'");
+                    if ($table_result && mysqli_num_rows($table_result) > 0) {
+                        $brand_query = "SELECT setting_value FROM settings WHERE setting_key = 'brand_text'";
+                        $brand_result = mysqli_query($conn, $brand_query);
+                        if ($brand_result && mysqli_num_rows($brand_result) > 0) {
+                            $brand_row = mysqli_fetch_assoc($brand_result);
+                            $brand_text = $brand_row['setting_value'];
+                        }
+                    }
+                }
+            } catch (Exception $e) {
+                // Log error if needed, but continue with default text
+                error_log("Error loading brand text: " . $e->getMessage());
+            }
+            
             try {
                 if (mysqli_query($conn, "SHOW DATABASES LIKE '" . DB_NAME . "'")) {
                     mysqli_select_db($conn, DB_NAME);
@@ -41,7 +63,7 @@ require_once dirname(__FILE__) . '/../config/db_config.php';
                 echo '</div>';
             }
             ?>
-            <span class="fw-bold fs-5 brand-text">Parking Monitoring</span>
+            <span class="fw-bold fs-5 brand-text"><?php echo htmlspecialchars($brand_text); ?></span>
         </a>
         
         <!-- Mobile Toggle Button -->

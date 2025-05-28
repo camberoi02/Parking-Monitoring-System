@@ -594,6 +594,40 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 }
                 break;
                 
+            case 'update_brand_text':
+                if ($database_exists) {
+                    $brand_text = mysqli_real_escape_string($conn, $_POST['brand_text']);
+                    
+                    // Get old brand text
+                    $old_brand_text = '';
+                    $result = mysqli_query($conn, "SELECT setting_value FROM settings WHERE setting_key = 'brand_text'");
+                    if ($result && $row = mysqli_fetch_assoc($result)) {
+                        $old_brand_text = $row['setting_value'];
+                    }
+                    
+                    // Update brand text
+                    $sql = "INSERT INTO settings (setting_key, setting_value) 
+                            VALUES ('brand_text', '$brand_text') 
+                            ON DUPLICATE KEY UPDATE setting_value = '$brand_text'";
+                    
+                    if (mysqli_query($conn, $sql)) {
+                        // Log to audit trail
+                        if ($old_brand_text != $brand_text) {
+                            logAudit($conn, 'update', 'settings', null, 'brand_text', $old_brand_text, $brand_text);
+                            logAudit($conn, 'update', 'settings', null, 'system_configuration', 
+                                    "Brand text: $old_brand_text", 
+                                    "Brand text: $brand_text (Changed by: Admin)");
+                        }
+                        
+                        $message = "Brand text updated successfully.";
+                    } else {
+                        $error = "Error updating brand text: " . mysqli_error($conn);
+                    }
+                } else {
+                    $error = "Database does not exist. Cannot update brand text.";
+                }
+                break;
+                
             // ...existing code for other actions...
         }
     }
@@ -923,6 +957,26 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                 </div>
             </div>
             
+            <!-- Brand Text Settings -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3>Brand Text Settings</h3>
+                </div>
+                <div class="card-body">
+                    <form id="brandTextForm" method="post">
+                        <input type="hidden" name="action" value="update_brand_text">
+                        <div class="mb-3">
+                            <label for="brand_text" class="form-label">Navigation Brand Text</label>
+                            <input type="text" class="form-control" id="brand_text" name="brand_text" 
+                                   placeholder="Enter Name" required>
+                            <div class="form-text text-body">This text appears next to the logo in the navigation bar.</div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Update Brand Text</button>
+                    </form>
+                </div>
+            </div>
+            
             <!-- Sector Management (Moved above Parking Spots) -->
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
@@ -1121,6 +1175,67 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                 </div>
             </div>
             
+            <!-- Forgot Password Reports Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h3>Forgot Password Reports</h3>
+                </div>
+                <div class="card-body">
+                    <?php
+                    // Fetch password reset requests
+                    $reset_requests = [];
+                    if ($database_exists && in_array('password_reset_requests', $tables)) {
+                        $result = mysqli_query($conn, "SELECT r.*, u.username as user_username FROM password_reset_requests r LEFT JOIN users u ON r.user_id = u.id ORDER BY r.request_date DESC");
+                        if ($result) {
+                            while($row = mysqli_fetch_assoc($result)) {
+                                $reset_requests[] = $row;
+                            }
+                        }
+                    }
+                    ?>
+                    <?php if (empty($reset_requests)): ?>
+                        <p>No password reset requests found.</p>
+                    <?php else: ?>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover border">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="fw-semibold">Username</th>
+                                        <th class="fw-semibold">Request Date</th>
+                                        <th class="fw-semibold">Status</th>
+                                        <th class="fw-semibold text-end">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($reset_requests as $req): ?>
+                                        <tr class="align-middle" id="reset-row-<?php echo $req['id']; ?>">
+                                            <td class="fw-medium"><?php echo htmlspecialchars($req['username']); ?></td>
+                                            <td><?php echo htmlspecialchars($req['request_date']); ?></td>
+                                            <td>
+                                                <span class="badge bg-<?php
+                                                    if ($req['status'] === 'pending') echo 'warning';
+                                                    elseif ($req['status'] === 'approved') echo 'success';
+                                                    else echo 'secondary';
+                                                ?> rounded-pill px-3 py-2">
+                                                    <?php echo ucfirst($req['status']); ?>
+                                                </span>
+                                            </td>
+                                            <td class="text-end">
+                                                <?php if ($req['status'] === 'pending'): ?>
+                                                    <button class="btn btn-danger btn-sm reset-password-btn" data-request-id="<?php echo $req['id']; ?>" data-username="<?php echo htmlspecialchars($req['username']); ?>">Reset</button>
+                                                <?php else: ?>
+                                                    <span class="text-muted">-</span>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            
             <div class="card">
                 <div class="card-header">
                     <h3>User List</h3>
@@ -1264,7 +1379,6 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                                         <th class="fw-semibold">Vehicle</th>
                                         <th class="fw-semibold">Entry Time</th>
                                         <th class="fw-semibold">Exit Time</th>
-                                        <th class="fw-semibold">Duration</th>
                                         <th class="fw-semibold text-end">Fee</th>
                                     </tr>
                                 </thead>
@@ -1478,6 +1592,71 @@ document.getElementById('logoForm').addEventListener('submit', function(e) {
     .finally(() => {
         submitButton.disabled = false;
         this.reset();
+    });
+});
+
+// Handle brand text form submission
+document.getElementById('brandTextForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const submitButton = this.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    
+    fetch('', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.text())
+    .then(html => {
+        // Update the brand text in the navigation bar
+        const brandText = document.querySelector('.navbar-brand .brand-text');
+        if (brandText) {
+            brandText.textContent = formData.get('brand_text');
+        }
+        
+        // Show success message
+        showToast('Brand text updated successfully', 'success');
+    })
+    .catch(error => {
+        showToast('Error updating brand text: ' + error, 'danger');
+    })
+    .finally(() => {
+        submitButton.disabled = false;
+    });
+});
+
+// Handle Reset Password button in Forgot Password Reports
+
+document.querySelectorAll('.reset-password-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        if (!confirm('Are you sure you want to reset the password for this user to password123?')) return;
+        const requestId = this.getAttribute('data-request-id');
+        const username = this.getAttribute('data-username');
+        const row = document.getElementById('reset-row-' + requestId);
+        fetch('includes/handlers/admin_reset_password.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'request_id=' + encodeURIComponent(requestId) + '&username=' + encodeURIComponent(username)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('Password reset to password123 for ' + username, 'success');
+                // Optionally update the row status and remove the button
+                if (row) {
+                    row.querySelector('td:nth-child(3) span').className = 'badge bg-success rounded-pill px-3 py-2';
+                    row.querySelector('td:nth-child(3) span').textContent = 'Approved';
+                    row.querySelector('td:nth-child(5)').innerHTML = '<span class="text-muted">-</span>';
+                    row.querySelector('td:nth-child(4)').textContent = 'Password reset by admin';
+                }
+            } else {
+                showToast(data.message || 'Failed to reset password.', 'danger');
+            }
+        })
+        .catch(() => {
+            showToast('Failed to reset password.', 'danger');
+        });
     });
 });
 </script>
