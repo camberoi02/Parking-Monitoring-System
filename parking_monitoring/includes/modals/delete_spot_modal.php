@@ -6,9 +6,9 @@
                 <h5 class="modal-title" id="deleteSpotModalLabel">Confirm Spot Deletion</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body">
-                <p>Are you sure you want to delete the parking spot: <strong id="delete-spot-number"></strong>?</p>
-                <form id="deleteSpotForm" method="post" action="">
+            <form id="deleteSpotForm" method="post" action="includes/handlers/manage_spots.php">
+                <div class="modal-body">
+                    <p>Are you sure you want to delete the parking spot: <strong id="delete-spot-number"></strong>?</p>
                     <input type="hidden" name="action" value="delete_spot">
                     <input type="hidden" name="spot_id" id="delete_spot_id">
                     <input type="hidden" name="active_tab" value="general">
@@ -24,14 +24,14 @@
                     </div>
                     
                     <p class="mb-0">This action cannot be undone.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-danger">
-                    <i class="fas fa-trash me-2"></i>Delete Spot
-                </button>
-                </form>
-            </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger" id="confirmDeleteSpot">
+                        <i class="fas fa-trash me-2"></i>Delete Spot
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

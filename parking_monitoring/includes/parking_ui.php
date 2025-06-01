@@ -137,7 +137,7 @@ function generateParkingSpotsHTML($conn, $parking_spots) {
                         $calc = ['duration' => '', 'fee' => 0];
                         if ($spot['is_occupied'] && !empty($spot['entry_time'])) {
                             $is_free = isset($spot['is_free']) && $spot['is_free'] == 1;
-                            $calc = calculateDurationAndFee($conn, $spot['entry_time'], $is_free);
+                            $calc = calculateDurationAndFee($conn, $spot['entry_time'], $is_free, $spot['vehicle_type'], $spot['customer_type'], $spot['is_overnight']);
                         }
                         
                         // Determine spot status for filtering
@@ -197,6 +197,7 @@ function generateParkingSpotsHTML($conn, $parking_spots) {
                                  data-duration="<?php echo $calc['duration']; ?>"
                                  data-fee="<?php echo number_format($calc['fee'], 2); ?>"
                                  data-is-free="<?php echo isset($spot['is_free']) && $spot['is_free'] == 1 ? '1' : '0'; ?>"
+                                 data-is-overnight="<?php echo isset($spot['is_overnight']) && $spot['is_overnight'] == 1 ? '1' : '0'; ?>"
                                  <?php elseif (isset($spot['is_rented']) && $spot['is_rented'] == 1): ?>
                                  data-renter-name="<?php echo htmlspecialchars($spot['renter_name']); ?>"
                                  data-renter-contact="<?php echo htmlspecialchars($spot['renter_contact']); ?>"
@@ -288,6 +289,17 @@ function generateParkingSpotsHTML($conn, $parking_spots) {
                                                 </div>
                                                 <div class="col-12 col-xl-6">
                                                     <div class="d-flex align-items-center">
+                                                        <i class="fas fa-user-tag fa-lg opacity-75 me-2"></i>
+                                                        <div class="overflow-hidden">
+                                                            <small class="text-white-50 d-block text-truncate">Customer Type</small>
+                                                            <div class="text-truncate">
+                                                                <?php echo $spot['customer_type'] === 'pasig_employee' ? 'Pasig City Employee' : 'Private Individual'; ?>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-12 col-xl-6">
+                                                    <div class="d-flex align-items-center">
                                                         <i class="fas fa-clock fa-lg opacity-75 me-2"></i>
                                                         <div class="overflow-hidden">
                                                             <small class="text-white-50 d-block text-truncate">Duration</small>
@@ -304,7 +316,7 @@ function generateParkingSpotsHTML($conn, $parking_spots) {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div class="col-12 col-xl-6">
+                                                <div class="col-12">
                                                     <div class="d-flex align-items-center">
                                                         <i class="fas fa-money-bill-wave fa-lg opacity-75 me-2"></i>
                                                         <div class="overflow-hidden">
@@ -314,7 +326,15 @@ function generateParkingSpotsHTML($conn, $parking_spots) {
                                                                     <span class="badge rounded-pill bg-warning text-dark">Free Parking</span>
                                                                 </div>
                                                             <?php else: ?>
-                                                                <div class="fw-bold">₱<?php echo number_format($calc['fee'], 2); ?></div>
+                                                                <div class="fw-bold">
+                                                                    ₱<?php echo number_format($calc['fee'], 2); ?>
+                                                                    <?php if ($spot['customer_type'] === 'pasig_employee'): ?>
+                                                                        <span class="badge rounded-pill bg-info text-dark ms-1">Pasig City Employee Rate</span>
+                                                                    <?php endif; ?>
+                                                                    <?php if ($spot['is_overnight']): ?>
+                                                                        <span class="badge rounded-pill bg-primary text-white ms-1">Overnight</span>
+                                                                    <?php endif; ?>
+                                                                </div>
                                                             <?php endif; ?>
                                                         </div>
                                                     </div>
@@ -476,6 +496,20 @@ function generateModalsHTML() {
                         </div>
                         
                         <div class="mb-3">
+                            <label for="customerType" class="form-label">Customer Type</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-white border-end-0">
+                                    <i class="fas fa-user-tag text-success"></i>
+                                </span>
+                                <select class="form-select border-start-0" id="customerType" name="customer_type" required>
+                                    <option value="">Select customer type</option>
+                                    <option value="pasig_employee">Pasig City Employee</option>
+                                    <option value="private">Private Individual</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
                             <label for="customerName" class="form-label">Customer Name</label>
                             <div class="input-group">
                                 <span class="input-group-text bg-white border-end-0">
@@ -505,14 +539,25 @@ function generateModalsHTML() {
                                 </span>
                                 <select class="form-select border-start-0" id="vehicleType" name="vehicle_type" required>
                                     <option value="">Select vehicle type</option>
-                                    <option value="Sedan">Sedan</option>
-                                    <option value="SUV">SUV</option>
-                                    <option value="Van">Van</option>
-                                    <option value="Truck">Truck</option>
+                                    <option value="Vehicle">Vehicle</option>
                                     <option value="Motorcycle">Motorcycle</option>
-                                    <option value="Other">Other</option>
                                 </select>
                             </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label d-block">Parking Type</label>
+                            <div class="btn-group w-100" role="group" aria-label="Parking type options">
+                                <input type="radio" class="btn-check" name="parking_type" value="day" id="dayParking" autocomplete="off" checked>
+                                <label class="btn btn-outline-success w-50" for="dayParking">
+                                    <i class="fas fa-sun me-2"></i>Day Parking
+                                </label>
+                                <input type="radio" class="btn-check" name="parking_type" value="overnight" id="overnightParking" autocomplete="off">
+                                <label class="btn btn-outline-primary w-50" for="overnightParking">
+                                    <i class="fas fa-moon me-2"></i>Overnight
+                                </label>
+                            </div>
+                            <input type="hidden" name="is_overnight" id="isOvernightField" value="0">
                         </div>
                         
                         <div class="mb-3">

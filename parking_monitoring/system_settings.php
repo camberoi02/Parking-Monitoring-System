@@ -6,6 +6,7 @@ $title = "System Settings";
 include_once 'includes/header.php';
 include_once 'includes/navigation.php';
 require_once 'config/db_config.php';
+require_once 'includes/parking_functions.php';
 
 // Check if user is admin
 $isAdmin = false;
@@ -41,6 +42,16 @@ if (function_exists('getBaseFee')) {
 
 // Get the base hours configuration
 $base_hours = getBaseHours($conn);
+
+// Get current settings
+$settings = [];
+$sql = "SELECT setting_key, setting_value FROM settings";
+$result = mysqli_query($conn, $sql);
+if ($result) {
+    while ($row = mysqli_fetch_assoc($result)) {
+        $settings[$row['setting_key']] = $row['setting_value'];
+    }
+}
 
 // Process form submissions
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
@@ -147,66 +158,56 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 break;
                 
             case 'update_parking_rate':
-                $base_fee = floatval($_POST['base_fee']);
-                $hourly_rate = floatval($_POST['hourly_rate']);
                 $base_hours = intval($_POST['base_hours']);
+                $overnight_fee = floatval($_POST['overnight_fee']);
                 
-                // Get old values for audit log
-                $old_base_fee = '';
-                $old_hourly_rate = '';
-                $old_base_hours = '';
+                // Get vehicle-specific rates
+                $motorcycle_base_fee = floatval($_POST['motorcycle_base_fee']);
+                $motorcycle_hourly_rate = floatval($_POST['motorcycle_hourly_rate']);
+                $motorcycle_overnight_fee = floatval($_POST['motorcycle_overnight_fee']);
+                $vehicle_base_fee = floatval($_POST['vehicle_base_fee']);
+                $vehicle_hourly_rate = floatval($_POST['vehicle_hourly_rate']);
+                $vehicle_overnight_fee = floatval($_POST['vehicle_overnight_fee']);
                 
-                $result = mysqli_query($conn, "SELECT setting_value FROM settings WHERE setting_key = 'base_fee'");
-                if ($result && $row = mysqli_fetch_assoc($result)) {
-                    $old_base_fee = $row['setting_value'];
-                }
+                // Get Pasig employee rates and toggle states
+                $pasig_motorcycle_base_fee = floatval($_POST['pasig_motorcycle_base_fee']);
+                $pasig_vehicle_base_fee = floatval($_POST['pasig_vehicle_base_fee']);
                 
-                $result = mysqli_query($conn, "SELECT setting_value FROM settings WHERE setting_key = 'hourly_rate'");
-                if ($result && $row = mysqli_fetch_assoc($result)) {
-                    $old_hourly_rate = $row['setting_value'];
-                }
+                // Handle toggle states and corresponding hourly rates
+                $pasig_motorcycle_hourly_enabled = isset($_POST['pasig_motorcycle_hourly_enabled']) ? '1' : '0';
+                $pasig_vehicle_hourly_enabled = isset($_POST['pasig_vehicle_hourly_enabled']) ? '1' : '0';
                 
-                $result = mysqli_query($conn, "SELECT setting_value FROM settings WHERE setting_key = 'base_hours'");
-                if ($result && $row = mysqli_fetch_assoc($result)) {
-                    $old_base_hours = $row['setting_value'];
-                }
-                
-                // Update base hours
-                updateBaseHours($conn, $base_hours);
-                
-                // Save to database using the function from db_config.php
-                if (function_exists('updateParkingRates') && updateParkingRates($conn, $base_fee, $hourly_rate)) {
-                    // Log to audit trail with improved details
-                    $user_ip = $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
-                    $changes = [];
-                    
-                    if ($old_base_fee != $base_fee) {
-                        logAudit($conn, 'update', 'settings', null, 'base_fee', $old_base_fee, $base_fee);
-                        $changes[] = "Base fee: ₱$old_base_fee → ₱$base_fee";
+                // Only use the submitted hourly rates if the toggle is enabled, otherwise set to 0
+                $pasig_motorcycle_hourly_rate = $pasig_motorcycle_hourly_enabled === '1' ? floatval($_POST['pasig_motorcycle_hourly_rate']) : 0.00;
+                $pasig_vehicle_hourly_rate = $pasig_vehicle_hourly_enabled === '1' ? floatval($_POST['pasig_vehicle_hourly_rate']) : 0.00;
+
+                // Update all settings
+                $settings_to_update = [
+                    'base_hours' => $base_hours,
+                    'overnight_fee' => $overnight_fee,
+                    'motorcycle_base_fee' => $motorcycle_base_fee,
+                    'motorcycle_hourly_rate' => $motorcycle_hourly_rate,
+                    'motorcycle_overnight_fee' => $motorcycle_overnight_fee,
+                    'vehicle_base_fee' => $vehicle_base_fee,
+                    'vehicle_hourly_rate' => $vehicle_hourly_rate,
+                    'vehicle_overnight_fee' => $vehicle_overnight_fee,
+                    'pasig_motorcycle_base_fee' => $pasig_motorcycle_base_fee,
+                    'pasig_vehicle_base_fee' => $pasig_vehicle_base_fee,
+                    'pasig_motorcycle_hourly_rate' => $pasig_motorcycle_hourly_rate,
+                    'pasig_vehicle_hourly_rate' => $pasig_vehicle_hourly_rate,
+                    'pasig_motorcycle_hourly_enabled' => $pasig_motorcycle_hourly_enabled,
+                    'pasig_vehicle_hourly_enabled' => $pasig_vehicle_hourly_enabled
+                ];
+
+                foreach ($settings_to_update as $key => $value) {
+                    $value = mysqli_real_escape_string($conn, $value);
+                    $sql = "INSERT INTO settings (setting_key, setting_value) 
+                            VALUES ('$key', '$value') 
+                            ON DUPLICATE KEY UPDATE setting_value = '$value'";
+                    mysqli_query($conn, $sql);
                     }
                     
-                    if ($old_hourly_rate != $hourly_rate) {
-                        logAudit($conn, 'update', 'settings', null, 'hourly_rate', $old_hourly_rate, $hourly_rate);
-                        $changes[] = "Hourly rate: ₱$old_hourly_rate → ₱$hourly_rate";
-                    }
-                    
-                    if ($old_base_hours != $base_hours) {
-                        logAudit($conn, 'update', 'settings', null, 'base_hours', $old_base_hours, $base_hours);
-                        $changes[] = "Base hours: $old_base_hours → $base_hours";
-                    }
-                    
-                    // Consolidated audit log entry for all parking rate changes
-                    if (!empty($changes)) {
-                        logAudit($conn, 'update', 'settings', null, 'parking_rates', 
-                                "Previous rates configuration", 
-                                "Updated rates: " . implode(", ", $changes) . " (Changed by: Admin)");
-                    }
-                    
-                    $message = "Parking rates updated successfully. Base fee: ₱" . number_format($base_fee, 2) . 
-                              " for first $base_hours hours, Additional hours: ₱" . number_format($hourly_rate, 2) . " per hour";
-                } else {
-                    $error = "Error updating parking rates";
-                }
+                    $message = "Parking rates updated successfully.";
                 break;
                 
             case 'add_user':
@@ -457,6 +458,35 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     // Auto-generate spot number
                     $spot_number = getNextSpotNumber($conn, $sector_id);
                     
+                    // Check if spot number already exists
+                    $check_sql = "SELECT id FROM parking_spots WHERE spot_number = '$spot_number'";
+                    $check_result = mysqli_query($conn, $check_sql);
+                    
+                    if (mysqli_num_rows($check_result) > 0) {
+                        // If duplicate found, try to find the next available number
+                        $base_letter = substr($spot_number, 0, strpos($spot_number, '-'));
+                        $number = intval(substr($spot_number, strpos($spot_number, '-') + 1));
+                        $found_available = false;
+                        
+                        // Try up to 100 next numbers
+                        for ($i = $number + 1; $i <= $number + 100; $i++) {
+                            $try_spot_number = $base_letter . "-A" . $i;
+                            $check_sql = "SELECT id FROM parking_spots WHERE spot_number = '$try_spot_number'";
+                            $check_result = mysqli_query($conn, $check_sql);
+                            
+                            if (mysqli_num_rows($check_result) == 0) {
+                                $spot_number = $try_spot_number;
+                                $found_available = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!$found_available) {
+                            $error = "Could not find an available spot number. Please try a different sector.";
+                            break;
+                        }
+                    }
+                    
                     // Check if sector_id column exists
                     mysqli_select_db($conn, DB_NAME);
                     $sector_column_exists = false;
@@ -476,22 +506,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     
                     if (mysqli_query($conn, $sql)) {
                         $spot_id = mysqli_insert_id($conn);
-                        $user_ip = $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
-                        logAudit($conn, 'insert', 'parking_spots', $spot_id, null, null, "Parking spot $spot_number added");
                         
-                        // Get sector name
-                        $sector_name = "Default";
-                        if (isset($_POST['sector_id'])) {
-                            $sector_id = mysqli_real_escape_string($conn, $_POST['sector_id']);
-                            $result = mysqli_query($conn, "SELECT name FROM sectors WHERE id = $sector_id");
-                            if ($result && $row = mysqli_fetch_assoc($result)) {
+                        // Get sector name for the audit log
+                        $sector_name = "Unknown";
+                        $sector_query = "SELECT name FROM sectors WHERE id = $sector_id";
+                        $sector_result = mysqli_query($conn, $sector_query);
+                        if ($sector_result && $row = mysqli_fetch_assoc($sector_result)) {
                                 $sector_name = $row['name'];
-                            }
                         }
                         
+                        logAudit($conn, 'insert', 'parking_spots', $spot_id, null, null, "Parking spot $spot_number added");
                         logAudit($conn, 'insert', 'parking_spots', $spot_id, 'spots_management', null, 
                                 "New parking spot created: $spot_number in sector: $sector_name (Created by: Admin)");
-                        $message = "Parking spot added successfully.";
+                        $message = "Parking spot $spot_number added successfully.";
                     } else {
                         $error = "Error adding parking spot: " . mysqli_error($conn);
                     }
@@ -504,12 +531,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 if ($database_exists) {
                     $spot_id = mysqli_real_escape_string($conn, $_POST['spot_id']);
                     
-                    // Check if spot is occupied first
+                    // Check if spot exists and get its details
                     mysqli_select_db($conn, DB_NAME);
-                    $check_sql = "SELECT is_occupied FROM parking_spots WHERE id = $spot_id";
+                    $check_sql = "SELECT spot_number, is_occupied FROM parking_spots WHERE id = $spot_id";
                     $result = mysqli_query($conn, $check_sql);
                     
                     if ($result && $row = mysqli_fetch_assoc($result)) {
+                        $spot_number = $row['spot_number']; // Store spot number for audit logs
+                        
                         if ($row['is_occupied']) {
                             $error = "Cannot delete an occupied parking spot. Please check out the vehicle first.";
                         } else {
@@ -909,32 +938,188 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                         <input type="hidden" name="action" value="update_parking_rate">
                         <input type="hidden" name="active_tab" value="general">
                         
-                        <div class="mb-3">
-                            <label for="base_fee" class="form-label">Base Fee for First <?php echo $base_hours; ?> Hours (₱)</label>
-                            <div class="input-group">
-                                <span class="input-group-text">₱</span>
-                                <input type="number" step="0.01" min="0" class="form-control" id="base_fee" name="base_fee" value="<?php echo number_format($base_fee, 2, '.', ''); ?>" required>
+                        <div class="row">
+                            <!-- Private Individual Rates -->
+                            <div class="col-md-6 mb-4">
+                                <div class="card">
+                                    <div class="card-header bg-primary text-white">
+                                        <h4 class="mb-0">Private Individual Rates</h4>
+                                    </div>
+                                    <div class="card-body">
+                                        <!-- Vehicle Rates -->
+                                        <div class="card mb-3">
+                                            <div class="card-header">
+                                                <h5 class="mb-0">Vehicle Rates</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-3">
+                                                    <label for="vehicle_base_fee" class="form-label">Base Fee for First <?php echo $base_hours; ?> Hours (₱)</label>
+                                                    <div class="input-group">
+                                                        <span class="input-group-text">₱</span>
+                                                        <input type="number" step="0.01" min="0" class="form-control" id="vehicle_base_fee" name="vehicle_base_fee" value="40.00" required>
+                                                    </div>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="vehicle_hourly_rate" class="form-label">Hourly Rate (₱)</label>
+                                                    <div class="input-group">
+                                                        <span class="input-group-text">₱</span>
+                                                        <input type="number" step="0.01" min="0" class="form-control" id="vehicle_hourly_rate" name="vehicle_hourly_rate" value="20.00" required>
+                                                    </div>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="vehicle_overnight_fee" class="form-label">Overnight Fee (₱)</label>
+                                                    <div class="input-group">
+                                                        <span class="input-group-text">₱</span>
+                                                        <input type="number" step="0.01" min="0" class="form-control" id="vehicle_overnight_fee" name="vehicle_overnight_fee" value="100.00" required>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Motorcycle Rates -->
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <h5 class="mb-0">Motorcycle Rates</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-3">
+                                                    <label for="motorcycle_base_fee" class="form-label">Base Fee for First <?php echo $base_hours; ?> Hours (₱)</label>
+                                                    <div class="input-group">
+                                                        <span class="input-group-text">₱</span>
+                                                        <input type="number" step="0.01" min="0" class="form-control" id="motorcycle_base_fee" name="motorcycle_base_fee" value="20.00" required>
+                                                    </div>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="motorcycle_hourly_rate" class="form-label">Hourly Rate (₱)</label>
+                                                    <div class="input-group">
+                                                        <span class="input-group-text">₱</span>
+                                                        <input type="number" step="0.01" min="0" class="form-control" id="motorcycle_hourly_rate" name="motorcycle_hourly_rate" value="10.00" required>
+                                                    </div>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="motorcycle_overnight_fee" class="form-label">Overnight Fee (₱)</label>
+                                                    <div class="input-group">
+                                                        <span class="input-group-text">₱</span>
+                                                        <input type="number" step="0.01" min="0" class="form-control" id="motorcycle_overnight_fee" name="motorcycle_overnight_fee" value="50.00" required>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="form-text text-body">This fee applies for the first <?php echo $base_hours; ?> hours of parking</div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="hourly_rate" class="form-label">Additional Hourly Rate (₱)</label>
-                            <div class="input-group">
-                                <span class="input-group-text">₱</span>
-                                <input type="number" step="0.01" min="0" class="form-control" id="hourly_rate" name="hourly_rate" value="<?php echo number_format($hourly_rate, 2, '.', ''); ?>" required>
+
+                            <!-- Pasig City Employee Rates -->
+                            <div class="col-md-6 mb-4">
+                                <div class="card">
+                                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h4 class="mb-0">Pasig City Employee Rates</h4>
+                                        </div>
+                                        <div>
+                                            <small class="text-white">Default Fixed Rate</small>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <!-- Vehicle Rates -->
+                                        <div class="card mb-3">
+                                            <div class="card-header d-flex justify-content-between align-items-center">
+                                                <h5 class="mb-0">Vehicle Rates</h5>
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input" type="checkbox" id="pasigVehicleHourlyToggle" 
+                                                           name="pasig_vehicle_hourly_enabled" 
+                                                           <?php echo (isset($settings['pasig_vehicle_hourly_enabled']) && $settings['pasig_vehicle_hourly_enabled'] == '1') ? 'checked' : ''; ?>>
+                                                    <label class="form-check-label" for="pasigVehicleHourlyToggle">Enable Hourly Rate</label>
+                                                </div>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-3">
+                                                    <label for="pasig_vehicle_base_fee" class="form-label">Base Fee for First 3 Hours (₱)</label>
+                                                    <div class="input-group">
+                                                        <span class="input-group-text">₱</span>
+                                                        <input type="number" step="0.01" min="0" class="form-control" 
+                                                               id="pasig_vehicle_base_fee" name="pasig_vehicle_base_fee" 
+                                                               value="<?php echo isset($settings['pasig_vehicle_base_fee']) ? $settings['pasig_vehicle_base_fee'] : '50.00'; ?>">
+                                                    </div>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="pasig_vehicle_hourly_rate" class="form-label">Hourly Rate (₱)</label>
+                                                    <div class="input-group">
+                                                        <span class="input-group-text">₱</span>
+                                                        <input type="number" step="0.01" min="0" class="form-control" 
+                                                               id="pasig_vehicle_hourly_rate" name="pasig_vehicle_hourly_rate" 
+                                                               value="<?php echo isset($settings['pasig_vehicle_hourly_rate']) ? $settings['pasig_vehicle_hourly_rate'] : '0.00'; ?>"
+                                                               <?php echo (isset($settings['pasig_vehicle_hourly_enabled']) && $settings['pasig_vehicle_hourly_enabled'] == '1') ? '' : 'readonly'; ?>>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Motorcycle Rates -->
+                                        <div class="card">
+                                            <div class="card-header d-flex justify-content-between align-items-center">
+                                                <h5 class="mb-0">Motorcycle Rates</h5>
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input" type="checkbox" id="pasigMotorcycleHourlyToggle" 
+                                                           name="pasig_motorcycle_hourly_enabled"
+                                                           <?php echo (isset($settings['pasig_motorcycle_hourly_enabled']) && $settings['pasig_motorcycle_hourly_enabled'] == '1') ? 'checked' : ''; ?>>
+                                                    <label class="form-check-label" for="pasigMotorcycleHourlyToggle">Enable Hourly Rate</label>
+                                                </div>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="mb-3">
+                                                    <label for="pasig_motorcycle_base_fee" class="form-label">Base Fee for First 3 Hours (₱)</label>
+                                                    <div class="input-group">
+                                                        <span class="input-group-text">₱</span>
+                                                        <input type="number" step="0.01" min="0" class="form-control" 
+                                                               id="pasig_motorcycle_base_fee" name="pasig_motorcycle_base_fee" 
+                                                               value="<?php echo isset($settings['pasig_motorcycle_base_fee']) ? $settings['pasig_motorcycle_base_fee'] : '20.00'; ?>">
+                                                    </div>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="pasig_motorcycle_hourly_rate" class="form-label">Hourly Rate (₱)</label>
+                                                    <div class="input-group">
+                                                        <span class="input-group-text">₱</span>
+                                                        <input type="number" step="0.01" min="0" class="form-control" 
+                                                               id="pasig_motorcycle_hourly_rate" name="pasig_motorcycle_hourly_rate" 
+                                                               value="<?php echo isset($settings['pasig_motorcycle_hourly_rate']) ? $settings['pasig_motorcycle_hourly_rate'] : '0.00'; ?>"
+                                                               <?php echo (isset($settings['pasig_motorcycle_hourly_enabled']) && $settings['pasig_motorcycle_hourly_enabled'] == '1') ? '' : 'readonly'; ?>>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="form-text text-body">This rate applies for each additional hour after the first <?php echo $base_hours; ?> hours</div>
                         </div>
-                        <div class="mb-3">
+
+                        <div class="mb-4">
                             <label for="base_hours" class="form-label">Base Hours</label>
                             <div class="input-group">
-                                <input type="number" min="1" max="24" class="form-control" id="base_hours" name="base_hours" value="<?php echo $base_hours; ?>" required>
+                                <input type="number" step="1" min="1" class="form-control" id="base_hours" name="base_hours" value="<?php echo $base_hours; ?>" required>
                                 <span class="input-group-text">hours</span>
                             </div>
                             <div class="form-text text-body">Number of hours covered by the base fee</div>
                         </div>
-                        
-                        <button type="submit" class="btn btn-primary">Update Rates</button>
+
+                        <div class="mb-4">
+                            <label for="overnight_fee" class="form-label">Overnight Fee (₱)</label>
+                            <div class="input-group">
+                                <span class="input-group-text">₱</span>
+                                <input type="number" step="0.01" min="0" class="form-control" id="overnight_fee" name="overnight_fee" value="500.00" required>
+                            </div>
+                            <div class="form-text text-body">Fee charged for overnight parking</div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>Save Changes
+                        </button>
                     </form>
                 </div>
             </div>
@@ -1057,9 +1242,8 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                         <ul class="dropdown-menu" aria-labelledby="addSpotDropdown">
                             <?php foreach ($sectors as $sector): ?>
                                 <li>
-                                    <form method="post" action="" class="dropdown-item-form">
+                                    <form class="add-spot-form dropdown-item-form">
                                         <input type="hidden" name="action" value="add_spot">
-                                        <input type="hidden" name="active_tab" value="general">
                                         <input type="hidden" name="sector_id" value="<?php echo $sector['id']; ?>">
                                         <button type="submit" class="dropdown-item">
                                             <?php echo htmlspecialchars($sector['name']); ?>
@@ -1106,18 +1290,20 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                                                 <?php endif; ?>
                                             </td>
                                             <td class="text-end">
-                                                <button type="button" class="btn btn-sm btn-danger delete-spot-btn"
                                                     <?php if (!$spot['is_occupied'] && !(isset($spot['is_rented']) && $spot['is_rented'] == 1) && !(isset($spot['is_reserved']) && $spot['is_reserved'] == 1)): ?>
+                                                    <button type="button" class="btn btn-sm btn-danger delete-spot-btn"
                                                         data-bs-toggle="modal" 
                                                         data-bs-target="#deleteSpotModal"
-                                                    <?php else: ?>
-                                                        title="Cannot delete a spot that is occupied, rented, or reserved. Please check out, end rental, or cancel reservation first."
-                                                    <?php endif; ?>
                                                     data-spot-id="<?php echo $spot['id']; ?>"
-                                                    data-spot-number="<?php echo htmlspecialchars($spot['spot_number']); ?>"
-                                                    <?php echo ($spot['is_occupied'] || (isset($spot['is_rented']) && $spot['is_rented'] == 1) || (isset($spot['is_reserved']) && $spot['is_reserved'] == 1)) ? 'disabled' : ''; ?>>
-                                                    <i class="fas fa-trash"></i> Delete
+                                                            data-spot-number="<?php echo htmlspecialchars($spot['spot_number']); ?>">
+                                                        <i class="fas fa-trash me-2"></i>Delete
                                                 </button>
+                                                <?php else: ?>
+                                                    <button type="button" class="btn btn-sm btn-danger" disabled
+                                                            title="Cannot delete a spot that is occupied, rented, or reserved. Please check out, end rental, or cancel reservation first.">
+                                                        <i class="fas fa-trash me-2"></i>Delete
+                                                    </button>
+                                                <?php endif; ?>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -1537,8 +1723,9 @@ include_once 'includes/modals/edit_sector_modal.php';
 include_once 'includes/modals/delete_sector_modal.php';
 ?>
 
-<!-- Include JavaScript file -->
+<!-- Include JavaScript files -->
 <script src="assets/js/system_settings.js"></script>
+<script src="assets/js/parking_spots.js"></script>
 
 <script>
 // Password visibility toggle
@@ -1627,7 +1814,6 @@ document.getElementById('brandTextForm').addEventListener('submit', function(e) 
 });
 
 // Handle Reset Password button in Forgot Password Reports
-
 document.querySelectorAll('.reset-password-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
         if (!confirm('Are you sure you want to reset the password for this user to password123?')) return;
@@ -1658,6 +1844,87 @@ document.querySelectorAll('.reset-password-btn').forEach(function(btn) {
             showToast('Failed to reset password.', 'danger');
         });
     });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Function to handle hourly rate toggle
+    function setupHourlyRateToggle(toggleId, rateId, defaultRate) {
+        const toggle = document.getElementById(toggleId);
+        const rateInput = document.getElementById(rateId);
+        
+        if (!toggle || !rateInput) return;
+
+        // Function to update rate input state
+        function updateRateInputState() {
+            rateInput.readOnly = !toggle.checked;
+            if (!toggle.checked) {
+                rateInput.value = '0.00';
+            } else {
+                rateInput.removeAttribute('readonly');
+                // Only set default rate if current value is 0
+                if (parseFloat(rateInput.value) === 0) {
+                    rateInput.value = defaultRate.toFixed(2);
+                }
+            }
+        }
+
+        // Initial state setup
+        updateRateInputState();
+
+        // Handle toggle changes
+        toggle.addEventListener('change', updateRateInputState);
+
+        // Handle direct rate input changes
+        rateInput.addEventListener('change', function() {
+            if (toggle.checked && this.value === '0.00') {
+                this.value = defaultRate.toFixed(2);
+            }
+        });
+    }
+
+    // Setup toggles for both vehicle types
+    setupHourlyRateToggle('pasigVehicleHourlyToggle', 'pasig_vehicle_hourly_rate', 20.00);
+    setupHourlyRateToggle('pasigMotorcycleHourlyToggle', 'pasig_motorcycle_hourly_rate', 10.00);
+
+    // Handle form submission
+    const parkingRateForm = document.querySelector('form[action=""][method="post"]');
+    if (parkingRateForm) {
+        parkingRateForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(html => {
+                // Show success message
+                showToast('Settings saved successfully', 'success');
+
+                // Update toggle states and input values from the form data
+                const vehicleToggle = document.getElementById('pasigVehicleHourlyToggle');
+                const vehicleRate = document.getElementById('pasig_vehicle_hourly_rate');
+                const motorcycleToggle = document.getElementById('pasigMotorcycleHourlyToggle');
+                const motorcycleRate = document.getElementById('pasig_motorcycle_hourly_rate');
+
+                if (vehicleToggle && vehicleRate) {
+                    vehicleToggle.checked = formData.has('pasig_vehicle_hourly_enabled');
+                    vehicleRate.readOnly = !vehicleToggle.checked;
+                    vehicleRate.value = vehicleToggle.checked ? formData.get('pasig_vehicle_hourly_rate') : '0.00';
+                }
+                
+                if (motorcycleToggle && motorcycleRate) {
+                    motorcycleToggle.checked = formData.has('pasig_motorcycle_hourly_enabled');
+                    motorcycleRate.readOnly = !motorcycleToggle.checked;
+                    motorcycleRate.value = motorcycleToggle.checked ? formData.get('pasig_motorcycle_hourly_rate') : '0.00';
+                }
+            })
+            .catch(error => {
+                showToast('Error saving settings: ' + error, 'danger');
+            });
+        });
+    }
 });
 </script>
 

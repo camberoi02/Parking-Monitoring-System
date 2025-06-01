@@ -44,7 +44,9 @@ $sql = "CREATE TABLE IF NOT EXISTS parking_spots (
     vehicle_id VARCHAR(20) NULL,
     customer_name VARCHAR(100) NULL,
     vehicle_type VARCHAR(50) NULL,
+    customer_type VARCHAR(50) NULL,
     is_free BOOLEAN NOT NULL DEFAULT 0,
+    is_overnight BOOLEAN NOT NULL DEFAULT 0,
     entry_time DATETIME NULL,
     is_rented BOOLEAN NOT NULL DEFAULT 0,
     renter_name VARCHAR(100) NULL,
@@ -96,7 +98,9 @@ $sql = "CREATE TABLE IF NOT EXISTS transactions (
     vehicle_id VARCHAR(20) NOT NULL,
     customer_name VARCHAR(100) NULL,
     vehicle_type VARCHAR(50) NULL,
+    customer_type VARCHAR(50) NULL,
     is_free BOOLEAN NOT NULL DEFAULT 0,
+    is_overnight BOOLEAN NOT NULL DEFAULT 0,
     entry_time DATETIME NOT NULL,
     exit_time DATETIME NULL,
     fee DECIMAL(10,2) NULL,
@@ -119,13 +123,33 @@ $sql = "CREATE TABLE IF NOT EXISTS settings (
 if(mysqli_query($conn, $sql)){
     echo '<div class="alert alert-success">Table settings created successfully</div>';
     
-    // Insert default hourly rate
-    $sql = "INSERT IGNORE INTO settings (setting_key, setting_value) VALUES ('hourly_rate', '100')";
-    
-    if(mysqli_query($conn, $sql)){
-        echo '<div class="alert alert-success">Default hourly rate (₱100.00) set successfully</div>';
-    } else{
-        echo '<div class="alert alert-danger">ERROR: Could not set default hourly rate. ' . mysqli_error($conn) . '</div>';
+    // Insert default settings
+    $default_settings = [
+        ['vehicle_base_fee', '40.00'],
+        ['vehicle_hourly_rate', '20.00'],
+        ['motorcycle_base_fee', '20.00'],
+        ['motorcycle_hourly_rate', '10.00'],
+        ['pasig_vehicle_base_fee', '50.00'],
+        ['pasig_vehicle_hourly_rate', '0.00'],
+        ['pasig_motorcycle_base_fee', '20.00'],
+        ['pasig_motorcycle_hourly_rate', '0.00'],
+        ['pasig_vehicle_hourly_enabled', '0'],
+        ['pasig_motorcycle_hourly_enabled', '0'],
+        ['base_hours', '3'],
+        ['overnight_fee', '500.00'],
+        ['vehicle_overnight_fee', '100.00'],
+        ['motorcycle_overnight_fee', '50.00']
+    ];
+
+    foreach ($default_settings as $setting) {
+        $key = $setting[0];
+        $value = $setting[1];
+        $sql = "INSERT IGNORE INTO settings (setting_key, setting_value) VALUES ('$key', '$value')";
+        if (mysqli_query($conn, $sql)) {
+            echo "<div class='alert alert-success'>Default $key set to $value successfully</div>";
+        } else {
+            echo "<div class='alert alert-danger'>ERROR: Could not set default $key. " . mysqli_error($conn) . "</div>";
+        }
     }
 } else{
     echo '<div class="alert alert-danger">ERROR: Could not create table. ' . mysqli_error($conn) . '</div>';
@@ -160,6 +184,26 @@ $sql = "CREATE TABLE IF NOT EXISTS earnings (
 
 if(mysqli_query($conn, $sql)){
     echo '<div class="alert alert-success">Table earnings created successfully</div>';
+} else{
+    echo '<div class="alert alert-danger">ERROR: Could not create table. ' . mysqli_error($conn) . '</div>';
+}
+
+// Create audit_trail table
+$sql = "CREATE TABLE IF NOT EXISTS audit_trail (
+    id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
+    action_type VARCHAR(50) NOT NULL,
+    table_name VARCHAR(50) NOT NULL,
+    record_id VARCHAR(50) NULL,
+    field_name VARCHAR(50) NULL,
+    old_value TEXT NULL,
+    new_value TEXT NULL,
+    user_id INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+)";
+
+if(mysqli_query($conn, $sql)){
+    echo '<div class="alert alert-success">Table audit_trail created successfully</div>';
 } else{
     echo '<div class="alert alert-danger">ERROR: Could not create table. ' . mysqli_error($conn) . '</div>';
 }

@@ -211,5 +211,128 @@ document.addEventListener('DOMContentLoaded', function() {
                 deleteButton.disabled = false;
             }
         });
+
+        // Handle delete sector form submission
+        const deleteSectorForm = document.getElementById('deleteSectorForm');
+        if (deleteSectorForm) {
+            deleteSectorForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const submitButton = this.querySelector('#deleteSectorBtn');
+                const modal = bootstrap.Modal.getInstance(deleteSectorModal);
+                
+                submitButton.disabled = true;
+                
+                fetch('', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.text())
+                .then(html => {
+                    // Reload the page to show updated data
+                    window.location.reload();
+                })
+                .catch(error => {
+                    showToast('Error deleting sector: ' + error, 'danger');
+                    submitButton.disabled = false;
+                });
+            });
+        }
     }
+
+    // Handle adding parking spots via AJAX
+    document.querySelectorAll('.dropdown-item-form').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            const sectorId = formData.get('sector_id');
+            const button = this.querySelector('button');
+            button.disabled = true;
+
+            fetch('includes/handlers/manage_spots.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Add the new spot to the table
+                    const spotsTable = document.querySelector('.table tbody');
+                    const newRow = document.createElement('tr');
+                    newRow.className = 'align-middle';
+                    newRow.innerHTML = `
+                        <td class="fw-medium">${data.spot.spot_number}</td>
+                        <td>
+                            <span class="badge bg-primary rounded-pill px-3 py-2">${data.spot.sector_name}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-success rounded-pill px-3 py-2">Available</span>
+                        </td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-danger delete-spot-btn"
+                                    data-bs-toggle="modal" 
+                                    data-bs-target="#deleteSpotModal"
+                                    data-spot-id="${data.spot.id}"
+                                    data-spot-number="${data.spot.spot_number}">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </td>
+                    `;
+                    spotsTable.insertBefore(newRow, spotsTable.firstChild);
+                    showToast(data.message, 'success');
+                } else {
+                    showToast(data.message || 'Error adding parking spot', 'danger');
+                }
+            })
+            .catch(error => {
+                showToast('Error adding parking spot: ' + error, 'danger');
+            })
+            .finally(() => {
+                button.disabled = false;
+            });
+        });
+    });
+
+    // Handle deleting parking spots via AJAX
+    document.querySelector('#deleteSpotModal').addEventListener('show.bs.modal', function(event) {
+        const button = event.relatedTarget;
+        const spotId = button.getAttribute('data-spot-id');
+        const spotNumber = button.getAttribute('data-spot-number');
+        
+        this.querySelector('#confirmDeleteSpot').setAttribute('data-spot-id', spotId);
+        this.querySelector('.modal-body').textContent = `Are you sure you want to delete parking spot ${spotNumber}?`;
+    });
+
+    document.querySelector('#confirmDeleteSpot').addEventListener('click', function() {
+        const spotId = this.getAttribute('data-spot-id');
+        const modal = bootstrap.Modal.getInstance(document.querySelector('#deleteSpotModal'));
+        this.disabled = true;
+
+        const formData = new FormData();
+        formData.append('action', 'delete_spot');
+        formData.append('spot_id', spotId);
+
+        fetch('includes/handlers/manage_spots.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Remove the row from the table
+                const row = document.querySelector(`button[data-spot-id="${spotId}"]`).closest('tr');
+                row.remove();
+                showToast(data.message, 'success');
+            } else {
+                showToast(data.message || 'Error deleting parking spot', 'danger');
+            }
+        })
+        .catch(error => {
+            showToast('Error deleting parking spot: ' + error, 'danger');
+        })
+        .finally(() => {
+            this.disabled = false;
+            modal.hide();
+        });
+    });
 });

@@ -9,8 +9,10 @@ function checkInVehicle($conn, $spot_id, $vehicle_id) {
     $vehicle_id = strtoupper(mysqli_real_escape_string($conn, $vehicle_id)); // Convert to uppercase
     $customer_name = strtoupper(mysqli_real_escape_string($conn, $_POST['customer_name'] ?? '')); // Convert to uppercase
     $vehicle_type = mysqli_real_escape_string($conn, $_POST['vehicle_type'] ?? '');
+    $customer_type = mysqli_real_escape_string($conn, $_POST['customer_type'] ?? '');
+    $is_overnight = (isset($_POST['is_overnight']) && $_POST['is_overnight'] == '1') ? 1 : 0;
     
-    // Fix: Check the value of is_free, not just if it's set
+    // Set is_free based on payment_option, regardless of customer type
     $is_free = (isset($_POST['is_free']) && $_POST['is_free'] == '1') ? 1 : 0;
     
     // Get current time in MySQL format
@@ -23,14 +25,16 @@ function checkInVehicle($conn, $spot_id, $vehicle_id) {
             customer_name = '$customer_name', 
             vehicle_type = '$vehicle_type',
             is_free = $is_free, 
+            is_overnight = $is_overnight,
+            customer_type = '$customer_type',
             entry_time = '$current_time' 
             WHERE id = $spot_id";
             
     if (mysqli_query($conn, $sql)) {
         // Create transaction record
         $sql = "INSERT INTO transactions 
-                (spot_id, vehicle_id, customer_name, vehicle_type, entry_time, is_free) 
-                VALUES ($spot_id, '$vehicle_id', '$customer_name', '$vehicle_type', '$current_time', $is_free)";
+                (spot_id, vehicle_id, customer_name, vehicle_type, entry_time, is_free, is_overnight, customer_type) 
+                VALUES ($spot_id, '$vehicle_id', '$customer_name', '$vehicle_type', '$current_time', $is_free, $is_overnight, '$customer_type')";
                 
         if (mysqli_query($conn, $sql)) {
             // Log the action to audit trail
@@ -38,7 +42,15 @@ function checkInVehicle($conn, $spot_id, $vehicle_id) {
             logAudit($conn, 'insert', 'transactions', $transaction_id, null, null, "Vehicle check-in: $vehicle_id at spot $spot_id");
             logAudit($conn, 'update', 'parking_spots', $spot_id, 'status', 'available', 'occupied');
             
-            return ["success" => true, "message" => "Vehicle checked in successfully" . ($is_free ? " (Free Parking)" : "")];
+            $message = "Vehicle checked in successfully";
+            if ($is_free) {
+                $message .= " (Free Parking)";
+            }
+            if ($is_overnight) {
+                $message .= " (Overnight Parking)";
+            }
+            
+            return ["success" => true, "message" => $message];
         } else {
             return ["success" => false, "message" => "Error creating transaction: " . mysqli_error($conn)];
         }
@@ -54,7 +66,7 @@ function checkOutVehicle($conn, $spot_id) {
     $spot_id = mysqli_real_escape_string($conn, $spot_id);
     
     // Get vehicle information
-    $sql = "SELECT vehicle_id, customer_name, vehicle_type, entry_time, is_free FROM parking_spots WHERE id = $spot_id";
+    $sql = "SELECT vehicle_id, customer_name, vehicle_type, entry_time, is_free, is_overnight, customer_type FROM parking_spots WHERE id = $spot_id";
     $result = mysqli_query($conn, $sql);
     if ($row = mysqli_fetch_assoc($result)) {
         $vehicle_id = $row['vehicle_id'];
@@ -62,15 +74,18 @@ function checkOutVehicle($conn, $spot_id) {
         $vehicle_type = $row['vehicle_type'];
         $entry_time = $row['entry_time'];
         $is_free = $row['is_free'] ?? 0;
+        $is_overnight = $row['is_overnight'] ?? 0;
+        $customer_type = $row['customer_type'] ?? '';
         
         // Use the same calculation function for consistency
-        $calc = calculateDurationAndFee($conn, $entry_time, $is_free);
+        $calc = calculateDurationAndFee($conn, $entry_time, $is_free, $vehicle_type, $customer_type, $is_overnight);
         $fee = $calc['fee'];
         
         // Update transaction
         $sql = "UPDATE transactions SET 
                 exit_time = NOW(), 
-                fee = $fee 
+                fee = $fee,
+                is_overnight = $is_overnight
                 WHERE spot_id = $spot_id 
                 AND vehicle_id = '$vehicle_id' 
                 AND exit_time IS NULL 
@@ -84,13 +99,15 @@ function checkOutVehicle($conn, $spot_id) {
             $transaction_id = $transaction_row['id'];
         }
         
-        // Update parking spot
+        // Update parking spot - clear all relevant fields
         $sql = "UPDATE parking_spots SET 
                 is_occupied = 0, 
                 vehicle_id = NULL, 
                 customer_name = NULL, 
                 vehicle_type = NULL,
+                customer_type = NULL,
                 is_free = 0,
+                is_overnight = 0,
                 entry_time = NULL 
                 WHERE id = $spot_id";
                 
@@ -100,8 +117,25 @@ function checkOutVehicle($conn, $spot_id) {
             logAudit($conn, 'update', 'transactions', $transaction_id, 'fee', null, $fee);
             logAudit($conn, 'update', 'parking_spots', $spot_id, 'status', 'occupied', 'available');
             
-            $message = $is_free ? "Vehicle checked out successfully. (Free Parking)" : "Vehicle checked out successfully. Fee: ₱" . number_format($fee, 2);
-            return ["success" => true, "message" => $message, "fee" => $fee, "is_free" => $is_free];
+            // Create a more detailed message
+            $message = "Vehicle checked out successfully.";
+            if ($is_free) {
+                $message .= " (Free Parking - " . ($customer_type === 'pasig_employee' ? 'Pasig City Employee' : 'Special Rate') . ")";
+            } else {
+                $message .= " Fee: ₱" . number_format($fee, 2);
+            }
+            if ($is_overnight) {
+                $message .= " (Overnight Parking)";
+            }
+            
+            return [
+                "success" => true, 
+                "message" => $message, 
+                "fee" => $fee, 
+                "is_free" => $is_free,
+                "is_overnight" => $is_overnight,
+                "duration" => $calc['duration']
+            ];
         } else {
             return ["success" => false, "message" => "Error updating spot: " . mysqli_error($conn)];
         }
@@ -197,10 +231,60 @@ function getAllParkingSpots($conn) {
 }
 
 /**
+ * Get vehicle base fee from settings
+ */
+function getVehicleBaseFee($conn, $vehicle_type, $customer_type = 'private') {
+    $setting_key = '';
+    if ($customer_type === 'pasig_employee') {
+        $setting_key = $vehicle_type === 'Vehicle' ? 'pasig_vehicle_base_fee' : 'pasig_motorcycle_base_fee';
+    } else {
+        $setting_key = $vehicle_type === 'Vehicle' ? 'vehicle_base_fee' : 'motorcycle_base_fee';
+    }
+    
+    $sql = "SELECT setting_value FROM settings WHERE setting_key = '$setting_key'";
+    $result = mysqli_query($conn, $sql);
+    if ($result && $row = mysqli_fetch_assoc($result)) {
+        return floatval($row['setting_value']);
+    }
+    return $vehicle_type === 'Vehicle' ? 40.00 : 20.00; // Default values
+}
+
+/**
+ * Get vehicle hourly rate from settings
+ */
+function getVehicleHourlyRate($conn, $vehicle_type, $customer_type = 'private') {
+    $setting_key = '';
+    if ($customer_type === 'pasig_employee') {
+        $setting_key = $vehicle_type === 'Vehicle' ? 'pasig_vehicle_hourly_rate' : 'pasig_motorcycle_hourly_rate';
+    } else {
+        $setting_key = $vehicle_type === 'Vehicle' ? 'vehicle_hourly_rate' : 'motorcycle_hourly_rate';
+    }
+    
+    $sql = "SELECT setting_value FROM settings WHERE setting_key = '$setting_key'";
+    $result = mysqli_query($conn, $sql);
+    if ($result && $row = mysqli_fetch_assoc($result)) {
+        return floatval($row['setting_value']);
+    }
+    return $vehicle_type === 'Vehicle' ? 20.00 : 10.00; // Default values
+}
+
+/**
+ * Get base hours from settings
+ */
+function getBaseHours($conn) {
+    $sql = "SELECT setting_value FROM settings WHERE setting_key = 'base_hours'";
+    $result = mysqli_query($conn, $sql);
+    if ($result && $row = mysqli_fetch_assoc($result)) {
+        return intval($row['setting_value']);
+    }
+    return 3; // Default value
+}
+
+/**
  * Calculate duration and fee for a spot
  */
-function calculateDurationAndFee($conn, $entry_time, $is_free = 0) {
-    if (empty($entry_time)) {
+function calculateDurationAndFee($conn, $entry_time, $is_free = 0, $vehicle_type = '', $customer_type = '', $is_overnight = 0) {
+    if (empty($entry_time) || $is_free) {
         return ['duration' => '', 'fee' => 0];
     }
     
@@ -219,43 +303,60 @@ function calculateDurationAndFee($conn, $entry_time, $is_free = 0) {
     if ($interval->i > 0 || ($interval->days == 0 && $interval->h == 0)) {
         $duration .= ', ' . $interval->i . ' minute' . ($interval->i != 1 ? 's' : '');
     }
+
+    // Get settings from database
+    $settings = [];
+    $sql = "SELECT setting_key, setting_value FROM settings";
+    $result = mysqli_query($conn, $sql);
+    while ($row = mysqli_fetch_assoc($result)) {
+        $settings[$row['setting_key']] = floatval($row['setting_value']);
+    }
+
+    // If overnight parking is selected, only charge the overnight fee
+    if ($is_overnight) {
+        $overnight_fee_key = strtolower($vehicle_type) . '_overnight_fee';
+        $overnight_fee = $settings[$overnight_fee_key] ?? ($vehicle_type === 'Motorcycle' ? 50.00 : 100.00);
+        return ['duration' => $duration, 'fee' => $overnight_fee];
+    }
+
+    // For regular parking, calculate based on vehicle type and customer type
+    $base_fee = 0;
+    $hourly_rate = 0;
+    $base_hours = $settings['base_hours'] ?? 3;
+
+    if ($customer_type === 'pasig_employee') {
+        // Use Pasig employee rates
+        if ($vehicle_type === 'Vehicle') {
+            $base_fee = $settings['pasig_vehicle_base_fee'] ?? 50.00;
+            $hourly_rate = $settings['pasig_vehicle_hourly_rate'] ?? 0.00;
+        } else { // Motorcycle
+            $base_fee = $settings['pasig_motorcycle_base_fee'] ?? 20.00;
+            $hourly_rate = $settings['pasig_motorcycle_hourly_rate'] ?? 0.00;
+        }
+    } else {
+        // Use regular rates
+        if ($vehicle_type === 'Vehicle') {
+            $base_fee = $settings['vehicle_base_fee'] ?? 40.00;
+            $hourly_rate = $settings['vehicle_hourly_rate'] ?? 20.00;
+        } else { // Motorcycle
+            $base_fee = $settings['motorcycle_base_fee'] ?? 20.00;
+            $hourly_rate = $settings['motorcycle_hourly_rate'] ?? 10.00;
+        }
+    }
     
-    // Calculate fee (skip if free parking)
-    $fee = 0;
-    if (!$is_free) {
-        // Calculate total hours
-        $total_hours = $interval->h + ($interval->days * 24);
-        $minutes = $interval->i;
-        
-        // Round partial hours up (15-minute intervals)
-        $partial_hour = ceil($minutes / 15) * 0.25;
-        $total_hours += $partial_hour;
-        
-        // Get base fee, hourly rate, and base hours
-        $base_fee = 50.00; // Default
-        $hourly_rate = 50.00; // Default
-        $base_hours = 3; // Default: First 3 hours covered by base fee
-        
-        if (function_exists('getBaseFee')) {
-            $base_fee = getBaseFee($conn);
-        }
-        
-        if (function_exists('getHourlyRate')) {
-            $hourly_rate = getHourlyRate($conn);
-        }
-        
-        if (function_exists('getBaseHours')) {
-            $base_hours = getBaseHours($conn);
-        }
-        
-        // Calculate fee based on structure:
-        // Base fee for first X hours (where X is base_hours), then hourly rate for additional hours
-        if ($total_hours <= $base_hours) {
-            $fee = $base_fee;
-        } else {
-            $additional_hours = $total_hours - $base_hours;
-            $fee = $base_fee + ($additional_hours * $hourly_rate);
-        }
+    // Calculate total hours
+    $total_hours = ($interval->days * 24) + $interval->h;
+    if ($interval->i > 0) {
+        $total_hours++; // Round up to the next hour
+    }
+    
+    // Calculate fee
+    $fee = $base_fee; // Start with base fee
+    
+    // Add hourly rate for hours beyond base hours if hourly rate is enabled
+    if ($hourly_rate > 0 && $total_hours > $base_hours) {
+        $additional_hours = $total_hours - $base_hours;
+        $fee += ($additional_hours * $hourly_rate);
     }
     
     return ['duration' => $duration, 'fee' => $fee];

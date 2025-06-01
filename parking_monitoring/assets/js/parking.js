@@ -604,6 +604,51 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     });
+
+    // Handle customer type selection
+    const customerTypeSelect = document.getElementById('customerType');
+    if (customerTypeSelect) {
+        customerTypeSelect.addEventListener('change', function() {
+            const isFreeParking = document.getElementById('freeParking');
+            const isPaidParking = document.getElementById('paidParking');
+            const isFreeField = document.getElementById('isFreeField');
+            
+            // Default to paid parking for all customer types
+            isFreeParking.checked = false;
+            isPaidParking.checked = true;
+            isFreeField.value = '0';
+            
+            // Enable payment option buttons for all customer types
+            isFreeParking.disabled = false;
+            isPaidParking.disabled = false;
+        });
+    }
+    
+    // Initialize payment option state on page load
+    const paidParking = document.getElementById('paidParking');
+    const isFreeField = document.getElementById('isFreeField');
+    if (paidParking && paidParking.checked) {
+        isFreeField.value = '0';
+    }
+    
+    // Handle payment option radio buttons
+    document.querySelectorAll('input[name="payment_option"]').forEach(input => {
+        input.addEventListener('change', function() {
+            const isFreeField = document.getElementById('isFreeField');
+            if (this.value === 'free') {
+                isFreeField.value = '1';
+            } else if (this.value === 'paid') {
+                isFreeField.value = '0';
+            }
+        });
+    });
+    
+    // Handle parking type selection
+    document.querySelectorAll('input[name="parking_type"]').forEach(input => {
+        input.addEventListener('change', function() {
+            document.getElementById('isOvernightField').value = this.value === 'overnight' ? '1' : '0';
+        });
+    });
 });
 
 // Handle payment option radio buttons

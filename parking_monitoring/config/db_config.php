@@ -15,10 +15,28 @@ if($conn === false){
 
 // Function to verify and repair database schema
 function verify_db_schema($conn) {
-    // Check if database exists
+    // First check if database exists
     $result = mysqli_query($conn, "SHOW DATABASES LIKE '" . DB_NAME . "'");
     if (mysqli_num_rows($result) > 0) {
         mysqli_select_db($conn, DB_NAME);
+        
+        // Check if settings table exists
+        $result = mysqli_query($conn, "SHOW TABLES LIKE 'settings'");
+        if (mysqli_num_rows($result) > 0) {
+            // Add overnight fee settings if they don't exist
+            $settings_to_check = [
+                'vehicle_overnight_fee' => '100.00',  // Default overnight fee for vehicles
+                'motorcycle_overnight_fee' => '50.00'  // Default overnight fee for motorcycles
+            ];
+            
+            foreach ($settings_to_check as $key => $default_value) {
+                $result = mysqli_query($conn, "SELECT setting_value FROM settings WHERE setting_key = '$key'");
+                if (mysqli_num_rows($result) == 0) {
+                    mysqli_query($conn, "INSERT INTO settings (setting_key, setting_value) VALUES ('$key', '$default_value')");
+                    echo "<div class='alert alert-success'>Added $key setting with default value ₱$default_value</div>";
+                }
+            }
+        }
         
         // Check if parking_spots table exists
         $result = mysqli_query($conn, "SHOW TABLES LIKE 'parking_spots'");
@@ -55,12 +73,28 @@ function verify_db_schema($conn) {
                 echo "<div class='alert alert-success'>Database schema updated: Added vehicle_type column to parking_spots table.</div>";
             }
             
+            // Check if customer_type column exists in parking_spots
+            $result = mysqli_query($conn, "SHOW COLUMNS FROM parking_spots LIKE 'customer_type'");
+            if (mysqli_num_rows($result) == 0) {
+                // Add customer_type column
+                mysqli_query($conn, "ALTER TABLE parking_spots ADD COLUMN customer_type VARCHAR(50) NULL");
+                echo "<div class='alert alert-success'>Database schema updated: Added customer_type column to parking_spots table.</div>";
+            }
+            
             // Check if is_free column exists in parking_spots
             $result = mysqli_query($conn, "SHOW COLUMNS FROM parking_spots LIKE 'is_free'");
             if (mysqli_num_rows($result) == 0) {
                 // Add is_free column
                 mysqli_query($conn, "ALTER TABLE parking_spots ADD COLUMN is_free BOOLEAN NOT NULL DEFAULT 0");
                 echo "<div class='alert alert-success'>Database schema updated: Added is_free column to parking_spots table.</div>";
+            }
+            
+            // Check if is_overnight column exists in parking_spots
+            $result = mysqli_query($conn, "SHOW COLUMNS FROM parking_spots LIKE 'is_overnight'");
+            if (mysqli_num_rows($result) == 0) {
+                // Add is_overnight column
+                mysqli_query($conn, "ALTER TABLE parking_spots ADD COLUMN is_overnight BOOLEAN NOT NULL DEFAULT 0");
+                echo "<div class='alert alert-success'>Database schema updated: Added is_overnight column to parking_spots table.</div>";
             }
             
             // Check if is_rented column exists in parking_spots
@@ -259,6 +293,22 @@ function verify_db_schema($conn) {
                     mysqli_query($conn, "ALTER TABLE transactions ADD COLUMN is_paid BOOLEAN NOT NULL DEFAULT 1");
                     echo "<div class='alert alert-success'>Database schema updated: Added is_paid column to transactions table.</div>";
                 }
+                
+                // Check if customer_type column exists in transactions
+                $result = mysqli_query($conn, "SHOW COLUMNS FROM transactions LIKE 'customer_type'");
+                if (mysqli_num_rows($result) == 0) {
+                    // Add customer_type column
+                    mysqli_query($conn, "ALTER TABLE transactions ADD COLUMN customer_type VARCHAR(50) NULL");
+                    echo "<div class='alert alert-success'>Database schema updated: Added customer_type column to transactions table.</div>";
+                }
+                
+                // Check if is_overnight column exists in transactions
+                $result = mysqli_query($conn, "SHOW COLUMNS FROM transactions LIKE 'is_overnight'");
+                if (mysqli_num_rows($result) == 0) {
+                    // Add is_overnight column
+                    mysqli_query($conn, "ALTER TABLE transactions ADD COLUMN is_overnight BOOLEAN NOT NULL DEFAULT 0");
+                    echo "<div class='alert alert-success'>Database schema updated: Added is_overnight column to transactions table.</div>";
+                }
             }
         }
     }
@@ -330,41 +380,6 @@ function updateParkingRates($conn, $base_fee, $hourly_rate) {
             VALUES ('hourly_rate', '$hourly_rate') 
             ON DUPLICATE KEY UPDATE setting_value = '$hourly_rate'";
     return mysqli_query($conn, $sql);
-}
-
-/**
- * Get the number of base hours covered by the base fee
- */
-function getBaseHours($conn) {
-    // First check if database exists
-    $result = mysqli_query($conn, "SHOW DATABASES LIKE '" . DB_NAME . "'");
-    if (mysqli_num_rows($result) == 0) {
-        // Database doesn't exist, return default value
-        return 3;
-    }
-    
-    mysqli_select_db($conn, DB_NAME);
-    
-    // Check if settings table exists
-    $result = mysqli_query($conn, "SHOW TABLES LIKE 'settings'");
-    if (mysqli_num_rows($result) == 0) {
-        // Settings table doesn't exist, return default value
-        return 3;
-    }
-    
-    // Get base_hours from settings
-    $sql = "SELECT setting_value FROM settings WHERE setting_key = 'base_hours'";
-    $result = mysqli_query($conn, $sql);
-    
-    if (mysqli_num_rows($result) > 0) {
-        $row = mysqli_fetch_assoc($result);
-        return intval($row['setting_value']);
-    } else {
-        // Default value if not found, also insert it for future use
-        $sql = "INSERT INTO settings (setting_key, setting_value) VALUES ('base_hours', '3')";
-        mysqli_query($conn, $sql);
-        return 3;
-    }
 }
 
 /**
@@ -546,60 +561,118 @@ function getNextSpotNumber($conn, $sector_id = NULL) {
  * Log an action to the audit log
  */
 function logAudit($conn, $action_type, $table_name, $record_id = null, $field_name = null, $old_value = null, $new_value = null) {
-    // Make sure we're connected to the database
+    // Select the database first
     mysqli_select_db($conn, DB_NAME);
     
-    // Check if audit_logs table exists
-    $result = mysqli_query($conn, "SHOW TABLES LIKE 'audit_logs'");
-    if (mysqli_num_rows($result) == 0) {
-        // Create audit_logs table if it doesn't exist
-        $sql = "CREATE TABLE audit_logs (
+    // Check if audit_trail table exists, if not create it
+    $check_table = mysqli_query($conn, "SHOW TABLES LIKE 'audit_trail'");
+    if (mysqli_num_rows($check_table) == 0) {
+        $create_sql = "CREATE TABLE IF NOT EXISTS audit_trail (
             id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
-            action_type ENUM('insert', 'update', 'delete', 'login', 'logout') NOT NULL,
+            action_type VARCHAR(50) NOT NULL,
             table_name VARCHAR(50) NOT NULL,
-            record_id INT NULL,
-            field_name VARCHAR(100) NULL,
+            record_id VARCHAR(50) NULL,
+            field_name VARCHAR(50) NULL,
             old_value TEXT NULL,
             new_value TEXT NULL,
             user_id INT NULL,
-            username VARCHAR(50) NULL,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
         )";
-        mysqli_query($conn, $sql);
+        mysqli_query($conn, $create_sql);
     }
     
-    // Get user info from session
-    $user_id = null;
-    $username = 'System';
+    $action_type = mysqli_real_escape_string($conn, $action_type);
+    $table_name = mysqli_real_escape_string($conn, $table_name);
+    $record_id = $record_id ? mysqli_real_escape_string($conn, $record_id) : 'NULL';
+    $field_name = $field_name ? "'" . mysqli_real_escape_string($conn, $field_name) . "'" : 'NULL';
+    $old_value = $old_value !== null ? "'" . mysqli_real_escape_string($conn, $old_value) . "'" : 'NULL';
+    $new_value = $new_value !== null ? "'" . mysqli_real_escape_string($conn, $new_value) . "'" : 'NULL';
     
-    if (session_status() === PHP_SESSION_ACTIVE) {
-        if (isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true) {
-            $user_id = $_SESSION["id"] ?? null;
-            $username = $_SESSION["username"] ?? 'Unknown user';
+    $sql = "INSERT INTO audit_trail (action_type, table_name, record_id, field_name, old_value, new_value) 
+            VALUES ('$action_type', '$table_name', $record_id, $field_name, $old_value, $new_value)";
+    
+    return mysqli_query($conn, $sql);
+}
+
+/**
+ * Update vehicle-specific parking rates
+ */
+function updateVehicleRates($conn, $vehicle_type, $base_fee, $hourly_rate, $overnight_fee) {
+    mysqli_select_db($conn, DB_NAME);
+    
+    // Check if settings table exists
+    $result = mysqli_query($conn, "SHOW TABLES LIKE 'settings'");
+    if (mysqli_num_rows($result) == 0) {
+        // Create settings table if it doesn't exist
+        $sql = "CREATE TABLE settings (
+            setting_key VARCHAR(50) PRIMARY KEY,
+            setting_value VARCHAR(255) NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )";
+        if (!mysqli_query($conn, $sql)) {
+            return false;
         }
     }
     
-    // Escape values for SQL
-    $action_type = $action_type ? mysqli_real_escape_string($conn, $action_type) : null;
-    $table_name = $table_name ? mysqli_real_escape_string($conn, $table_name) : null;
-    $field_name = $field_name ? mysqli_real_escape_string($conn, $field_name) : null;
-    $old_value = $old_value !== null ? mysqli_real_escape_string($conn, $old_value) : null;
-    $new_value = $new_value !== null ? mysqli_real_escape_string($conn, $new_value) : null;
-    $username = $username ? mysqli_real_escape_string($conn, $username) : null;
+    // Update base fee
+    $base_fee_key = strtolower($vehicle_type) . '_base_fee';
+    $sql = "INSERT INTO settings (setting_key, setting_value) 
+            VALUES ('$base_fee_key', '$base_fee') 
+            ON DUPLICATE KEY UPDATE setting_value = '$base_fee'";
+    if (!mysqli_query($conn, $sql)) {
+        return false;
+    }
     
-    // Build the SQL query with proper NULL handling
-    $sql = "INSERT INTO audit_logs (action_type, table_name, record_id, field_name, old_value, new_value, user_id, username) VALUES (
-        '$action_type', 
-        '$table_name', 
-        " . ($record_id !== null ? intval($record_id) : "NULL") . ", 
-        " . ($field_name !== null ? "'$field_name'" : "NULL") . ", 
-        " . ($old_value !== null ? "'$old_value'" : "NULL") . ", 
-        " . ($new_value !== null ? "'$new_value'" : "NULL") . ", 
-        " . ($user_id !== null ? intval($user_id) : "NULL") . ", 
-        " . ($username !== null ? "'$username'" : "NULL") . "
-    )";
+    // Update hourly rate
+    $hourly_rate_key = strtolower($vehicle_type) . '_hourly_rate';
+    $sql = "INSERT INTO settings (setting_key, setting_value) 
+            VALUES ('$hourly_rate_key', '$hourly_rate') 
+            ON DUPLICATE KEY UPDATE setting_value = '$hourly_rate'";
+    if (!mysqli_query($conn, $sql)) {
+        return false;
+    }
     
+    // Update overnight fee
+    $overnight_fee_key = strtolower($vehicle_type) . '_overnight_fee';
+    $sql = "INSERT INTO settings (setting_key, setting_value) 
+            VALUES ('$overnight_fee_key', '$overnight_fee') 
+            ON DUPLICATE KEY UPDATE setting_value = '$overnight_fee'";
     return mysqli_query($conn, $sql);
+}
+
+/**
+ * Get the overnight fee for a specific vehicle type
+ */
+function getVehicleOvernightFee($conn, $vehicle_type) {
+    // First check if database exists
+    $result = mysqli_query($conn, "SHOW DATABASES LIKE '" . DB_NAME . "'");
+    if (mysqli_num_rows($result) == 0) {
+        // Database doesn't exist, return default rate
+        return $vehicle_type == 'Motorcycle' ? 50.00 : 100.00;
+    }
+    
+    mysqli_select_db($conn, DB_NAME);
+    
+    // Check if settings table exists
+    $result = mysqli_query($conn, "SHOW TABLES LIKE 'settings'");
+    if (mysqli_num_rows($result) == 0) {
+        // Settings table doesn't exist, return default value
+        return $vehicle_type == 'Motorcycle' ? 50.00 : 100.00;
+    }
+    
+    // Get overnight fee from settings based on vehicle type
+    $setting_key = strtolower($vehicle_type) . '_overnight_fee';
+    $sql = "SELECT setting_value FROM settings WHERE setting_key = '$setting_key'";
+    $result = mysqli_query($conn, $sql);
+    
+    if (mysqli_num_rows($result) > 0) {
+        $row = mysqli_fetch_assoc($result);
+        return floatval($row['setting_value']);
+    } else {
+        // Default values if not found
+        return $vehicle_type == 'Motorcycle' ? 50.00 : 100.00;
+    }
 }
 
 // Run schema verification if we're not in the database initialization process
