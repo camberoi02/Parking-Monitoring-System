@@ -660,14 +660,14 @@ document.addEventListener('DOMContentLoaded', function() {
             isPaidParking.disabled = false;
         });
     }
-
+    
     // Initialize payment option state on page load
     const paidParking = document.getElementById('paidParking');
     const isFreeField = document.getElementById('isFreeField');
     if (paidParking && paidParking.checked) {
         isFreeField.value = '0';
     }
-
+    
     // Handle payment option radio buttons
     document.querySelectorAll('input[name="payment_option"]').forEach(input => {
         input.addEventListener('change', function() {
@@ -679,7 +679,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-
+    
     // Handle parking type selection
     document.querySelectorAll('input[name="parking_type"]').forEach(input => {
         input.addEventListener('change', function() {
