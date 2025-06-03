@@ -45,35 +45,35 @@ $search_condition = '';
 
 if (!empty($search_term)) {
     $search_condition = " AND (
-        table_name LIKE '%$search_term%' OR 
-        field_name LIKE '%$search_term%' OR 
-        old_value LIKE '%$search_term%' OR 
-        new_value LIKE '%$search_term%' OR 
-        username LIKE '%$search_term%'
+        a.table_name LIKE '%$search_term%' OR 
+        a.field_name LIKE '%$search_term%' OR 
+        a.old_value LIKE '%$search_term%' OR 
+        a.new_value LIKE '%$search_term%' OR 
+        u.username LIKE '%$search_term%'
     )";
 }
 
 // Date range filter
 if (!empty($_GET['date_from'])) {
     $date_from = mysqli_real_escape_string($conn, $_GET['date_from']);
-    $search_condition .= " AND created_at >= '$date_from 00:00:00'";
+    $search_condition .= " AND a.created_at >= '$date_from 00:00:00'";
 }
 
 if (!empty($_GET['date_to'])) {
     $date_to = mysqli_real_escape_string($conn, $_GET['date_to']);
-    $search_condition .= " AND created_at <= '$date_to 23:59:59'";
+    $search_condition .= " AND a.created_at <= '$date_to 23:59:59'";
 }
 
 // Action type filter
 if (!empty($_GET['action_type'])) {
     $action_type = mysqli_real_escape_string($conn, $_GET['action_type']);
-    $search_condition .= " AND action_type = '$action_type'";
+    $search_condition .= " AND a.action_type = '$action_type'";
 }
 
 // Table name filter
 if (!empty($_GET['table_name'])) {
     $table_name = mysqli_real_escape_string($conn, $_GET['table_name']);
-    $search_condition .= " AND table_name = '$table_name'";
+    $search_condition .= " AND a.table_name = '$table_name'";
 }
 
 // Username filter
