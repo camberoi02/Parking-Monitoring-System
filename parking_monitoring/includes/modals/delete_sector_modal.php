@@ -16,14 +16,9 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <form id="deleteSectorForm" method="post" action="">
-                    <input type="hidden" name="action" value="delete_sector">
-                    <input type="hidden" name="sector_id" id="delete_sector_id">
-                    <input type="hidden" name="active_tab" value="general">
-                    <button type="submit" class="btn btn-danger" id="deleteSectorBtn">
+                <button type="button" class="btn btn-danger" id="deleteSectorBtn">
                         <i class="fas fa-trash me-2"></i>Delete Sector
                     </button>
-                </form>
             </div>
         </div>
     </div>

@@ -88,22 +88,28 @@ document.addEventListener('DOMContentLoaded', function() {
             const modalUsername = editUserModal.querySelector('#edit_username');
             const modalRole = editUserModal.querySelector('#edit_role');
             
-            modalUserId.value = userId;
-            modalUsername.value = username;
+            if (modalUserId) modalUserId.value = userId;
+            if (modalUsername) modalUsername.value = username;
             
             // Select the correct option
+            if (modalRole) {
             for (let i = 0; i < modalRole.options.length; i++) {
                 if (modalRole.options[i].value === role) {
                     modalRole.options[i].selected = true;
                     break;
+                    }
                 }
             }
         });
         
         // Handle save changes button
-        document.getElementById('saveUserChanges').addEventListener('click', function() {
-            document.getElementById('editUserForm').submit();
+        const saveUserChanges = document.getElementById('saveUserChanges');
+        if (saveUserChanges) {
+            saveUserChanges.addEventListener('click', function() {
+                const editUserForm = document.getElementById('editUserForm');
+                if (editUserForm) editUserForm.submit();
         });
+        }
     }
     
     // Handle delete user modal
@@ -182,129 +188,104 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle delete sector modal
     const deleteSectorModal = document.getElementById('deleteSectorModal');
     if (deleteSectorModal) {
+        let sectorToDeleteId = null;
+        
         deleteSectorModal.addEventListener('show.bs.modal', function(event) {
-            // Button that triggered the modal
             const button = event.relatedTarget;
-            
-            // Extract info from data attributes
             const sectorId = button.getAttribute('data-sector-id');
             const sectorName = button.getAttribute('data-sector-name');
-            const spotsCount = parseInt(button.getAttribute('data-spots-count'));
+            const spotsCount = button.getAttribute('data-spots-count');
             
-            // Update the modal's content
-            const modalSectorId = deleteSectorModal.querySelector('#delete_sector_id');
-            const modalSectorName = deleteSectorModal.querySelector('#delete-sector-name');
-            const sectorHasSpots = deleteSectorModal.querySelector('#sector-has-spots');
-            const sectorSpotsCount = deleteSectorModal.querySelector('#sector-spots-count');
-            const deleteButton = deleteSectorModal.querySelector('#deleteSectorBtn');
+            sectorToDeleteId = sectorId;
             
-            modalSectorId.value = sectorId;
-            modalSectorName.textContent = sectorName;
+            document.getElementById('delete-sector-name').textContent = sectorName;
+            const spotsWarning = document.getElementById('sector-has-spots');
+            const spotsCountSpan = document.getElementById('sector-spots-count');
             
-            // Show warning and disable delete button if sector has spots
             if (spotsCount > 0) {
-                sectorHasSpots.classList.remove('d-none');
-                sectorSpotsCount.textContent = spotsCount;
-                deleteButton.disabled = true;
+                spotsWarning.style.display = 'block';
+                spotsCountSpan.textContent = spotsCount;
+                document.getElementById('deleteSectorBtn').disabled = true;
             } else {
-                sectorHasSpots.classList.add('d-none');
-                deleteButton.disabled = false;
+                spotsWarning.style.display = 'none';
+                document.getElementById('deleteSectorBtn').disabled = false;
             }
         });
 
-        // Handle delete sector form submission
-        const deleteSectorForm = document.getElementById('deleteSectorForm');
-        if (deleteSectorForm) {
-            deleteSectorForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-                const formData = new FormData(this);
-                const submitButton = this.querySelector('#deleteSectorBtn');
-                const modal = bootstrap.Modal.getInstance(deleteSectorModal);
-                
-                submitButton.disabled = true;
-                
-                fetch('', {
+        document.getElementById('deleteSectorBtn').addEventListener('click', function() {
+            if (!sectorToDeleteId) return;
+            
+            const formData = new FormData();
+            formData.append('sector_id', sectorToDeleteId);
+            
+            fetch('includes/handlers/delete_sector.php', {
                     method: 'POST',
                     body: formData
                 })
-                .then(response => response.text())
-                .then(html => {
-                    // Reload the page to show updated data
-                    window.location.reload();
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(deleteSectorModal);
+                    modal.hide();
+                    // Reload page after a short delay
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    showToast(data.message, 'danger');
+                }
                 })
                 .catch(error => {
                     showToast('Error deleting sector: ' + error, 'danger');
-                    submitButton.disabled = false;
                 });
             });
-        }
     }
 
-    // Handle adding parking spots via AJAX
-    document.querySelectorAll('.dropdown-item-form').forEach(form => {
-        form.addEventListener('submit', function(e) {
+    // Handle edit sector form submission
+    const editSectorForm = document.getElementById('editSectorForm');
+    if (editSectorForm) {
+        editSectorForm.addEventListener('submit', function(e) {
             e.preventDefault();
             const formData = new FormData(this);
-            const sectorId = formData.get('sector_id');
-            const button = this.querySelector('button');
-            button.disabled = true;
 
-            fetch('includes/handlers/manage_spots.php', {
+            fetch('includes/handlers/edit_sector.php', {
                 method: 'POST',
                 body: formData
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Add the new spot to the table
-                    const spotsTable = document.querySelector('.table tbody');
-                    const newRow = document.createElement('tr');
-                    newRow.className = 'align-middle';
-                    newRow.innerHTML = `
-                        <td class="fw-medium">${data.spot.spot_number}</td>
-                        <td>
-                            <span class="badge bg-primary rounded-pill px-3 py-2">${data.spot.sector_name}</span>
-                        </td>
-                        <td>
-                            <span class="badge bg-success rounded-pill px-3 py-2">Available</span>
-                        </td>
-                        <td class="text-end">
-                            <button type="button" class="btn btn-sm btn-danger delete-spot-btn"
-                                    data-bs-toggle="modal" 
-                                    data-bs-target="#deleteSpotModal"
-                                    data-spot-id="${data.spot.id}"
-                                    data-spot-number="${data.spot.spot_number}">
-                                <i class="fas fa-trash"></i> Delete
-                            </button>
-                        </td>
-                    `;
-                    spotsTable.insertBefore(newRow, spotsTable.firstChild);
                     showToast(data.message, 'success');
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('editSectorModal'));
+                    modal.hide();
+                    // Reload page after a short delay
+                    setTimeout(() => window.location.reload(), 1000);
                 } else {
-                    showToast(data.message || 'Error adding parking spot', 'danger');
+                    showToast(data.message, 'danger');
                 }
             })
             .catch(error => {
-                showToast('Error adding parking spot: ' + error, 'danger');
-            })
-            .finally(() => {
-                button.disabled = false;
+                showToast('Error updating sector: ' + error, 'danger');
             });
         });
-    });
+    }
 
     // Handle deleting parking spots via AJAX
     document.querySelector('#deleteSpotModal').addEventListener('show.bs.modal', function(event) {
         const button = event.relatedTarget;
         const spotId = button.getAttribute('data-spot-id');
         const spotNumber = button.getAttribute('data-spot-number');
+        const sectorId = button.closest('tr').querySelector('td:nth-child(2) .badge').getAttribute('data-sector-id');
         
         this.querySelector('#confirmDeleteSpot').setAttribute('data-spot-id', spotId);
-        this.querySelector('.modal-body').textContent = `Are you sure you want to delete parking spot ${spotNumber}?`;
+        this.querySelector('#confirmDeleteSpot').setAttribute('data-sector-id', sectorId);
+        this.querySelector('#delete-spot-number').textContent = spotNumber;
     });
 
     document.querySelector('#confirmDeleteSpot').addEventListener('click', function() {
         const spotId = this.getAttribute('data-spot-id');
+        const sectorId = this.getAttribute('data-sector-id');
         const modal = bootstrap.Modal.getInstance(document.querySelector('#deleteSpotModal'));
         this.disabled = true;
 
@@ -316,23 +297,87 @@ document.addEventListener('DOMContentLoaded', function() {
             method: 'POST',
             body: formData
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.success) {
                 // Remove the row from the table
                 const row = document.querySelector(`button[data-spot-id="${spotId}"]`).closest('tr');
                 row.remove();
+                
+                // Update the sector spot count (decrease by 1)
+                const sectorRow = document.querySelector(`tr[data-sector-id="${sectorId}"]`);
+                if (sectorRow) {
+                    const spotCountCell = sectorRow.querySelector('td:nth-child(3)');
+                    if (spotCountCell) {
+                        const currentText = spotCountCell.textContent;
+                        const currentCount = parseInt(currentText) || 0;
+                        spotCountCell.textContent = `${Math.max(0, currentCount - 1)} spots`;
+                        
+                        // Update delete button state
+                        const deleteButton = sectorRow.querySelector('.delete-sector-btn');
+                        if (deleteButton) {
+                            const newCount = Math.max(0, currentCount - 1);
+                            deleteButton.setAttribute('data-spots-count', newCount);
+                            if (newCount === 0) {
+                                deleteButton.disabled = false;
+                                deleteButton.removeAttribute('title');
+                            }
+                        }
+                    }
+                }
+                
                 showToast(data.message, 'success');
             } else {
                 showToast(data.message || 'Error deleting parking spot', 'danger');
             }
         })
         .catch(error => {
-            showToast('Error deleting parking spot: ' + error, 'danger');
+            console.error('Error:', error);
+            showToast('Error deleting parking spot: ' + error.message, 'danger');
         })
         .finally(() => {
             this.disabled = false;
             modal.hide();
         });
     });
+
+    // Handle add sector form submission
+    const addSectorForm = document.getElementById('addSectorForm');
+    if (addSectorForm) {
+        addSectorForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            
+            fetch('includes/handlers/add_sector.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('addSectorModal'));
+                    modal.hide();
+                    // Reload page after a short delay
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    showToast(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                showToast('Error adding sector: ' + error, 'danger');
+            });
+        });
+    }
+
+    // Prevent form resubmission on page refresh
+    if (window.history.replaceState) {
+        window.history.replaceState(null, null, window.location.href);
+    }
 });

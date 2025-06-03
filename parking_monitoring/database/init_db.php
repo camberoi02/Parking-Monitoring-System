@@ -94,7 +94,7 @@ if(mysqli_query($conn, $sql)){
 // Create transactions table
 $sql = "CREATE TABLE IF NOT EXISTS transactions (
     id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
-    spot_id INT NOT NULL,
+    spot_id INT NULL,
     vehicle_id VARCHAR(20) NOT NULL,
     customer_name VARCHAR(100) NULL,
     vehicle_type VARCHAR(50) NULL,
@@ -104,7 +104,12 @@ $sql = "CREATE TABLE IF NOT EXISTS transactions (
     entry_time DATETIME NOT NULL,
     exit_time DATETIME NULL,
     fee DECIMAL(10,2) NULL,
-    FOREIGN KEY (spot_id) REFERENCES parking_spots(id)
+    transaction_type ENUM('parking', 'rental', 'reservation') NOT NULL DEFAULT 'parking',
+    rental_start_date DATE NULL,
+    rental_end_date DATE NULL,
+    rental_rate DECIMAL(10,2) NULL,
+    reservation_fee DECIMAL(10,2) NULL,
+    is_paid BOOLEAN NOT NULL DEFAULT 1
 )";
 
 if(mysqli_query($conn, $sql)){
@@ -125,20 +130,12 @@ if(mysqli_query($conn, $sql)){
     
     // Insert default settings
     $default_settings = [
+        ['hourly_rate', '100'],
         ['vehicle_base_fee', '40.00'],
         ['vehicle_hourly_rate', '20.00'],
         ['motorcycle_base_fee', '20.00'],
         ['motorcycle_hourly_rate', '10.00'],
-        ['pasig_vehicle_base_fee', '50.00'],
-        ['pasig_vehicle_hourly_rate', '0.00'],
-        ['pasig_motorcycle_base_fee', '20.00'],
-        ['pasig_motorcycle_hourly_rate', '0.00'],
-        ['pasig_vehicle_hourly_enabled', '0'],
-        ['pasig_motorcycle_hourly_enabled', '0'],
-        ['base_hours', '3'],
-        ['overnight_fee', '500.00'],
-        ['vehicle_overnight_fee', '100.00'],
-        ['motorcycle_overnight_fee', '50.00']
+        ['base_hours', '3']
     ];
 
     foreach ($default_settings as $setting) {
@@ -179,7 +176,7 @@ $sql = "CREATE TABLE IF NOT EXISTS earnings (
     description TEXT,
     transaction_id INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (transaction_id) REFERENCES transactions(id)
+    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE SET NULL
 )";
 
 if(mysqli_query($conn, $sql)){
@@ -206,6 +203,44 @@ if(mysqli_query($conn, $sql)){
     echo '<div class="alert alert-success">Table audit_trail created successfully</div>';
 } else{
     echo '<div class="alert alert-danger">ERROR: Could not create table. ' . mysqli_error($conn) . '</div>';
+}
+
+// Add new columns to existing tables if they don't exist
+$new_columns = [
+    'transactions' => [
+        ['customer_type', 'VARCHAR(50) NULL'],
+        ['is_overnight', 'BOOLEAN NOT NULL DEFAULT 0'],
+        ['transaction_type', "ENUM('parking', 'rental', 'reservation') NOT NULL DEFAULT 'parking'"],
+        ['rental_start_date', 'DATE NULL'],
+        ['rental_end_date', 'DATE NULL'],
+        ['rental_rate', 'DECIMAL(10,2) NULL'],
+        ['reservation_fee', 'DECIMAL(10,2) NULL'],
+        ['is_paid', 'BOOLEAN NOT NULL DEFAULT 1']
+    ],
+    'parking_spots' => [
+        ['customer_type', 'VARCHAR(50) NULL'],
+        ['is_overnight', 'BOOLEAN NOT NULL DEFAULT 0'],
+        ['reservation_fee', 'DECIMAL(10,2) NULL']
+    ]
+];
+
+foreach ($new_columns as $table => $columns) {
+    foreach ($columns as $column) {
+        $column_name = $column[0];
+        $column_def = $column[1];
+        
+        // Check if column exists
+        $result = mysqli_query($conn, "SHOW COLUMNS FROM `$table` LIKE '$column_name'");
+        if (!$result || mysqli_num_rows($result) == 0) {
+            // Column doesn't exist, add it
+            $sql = "ALTER TABLE `$table` ADD COLUMN `$column_name` $column_def";
+            if (mysqli_query($conn, $sql)) {
+                echo "<div class='alert alert-success'>Added column $column_name to table $table</div>";
+            } else {
+                echo "<div class='alert alert-danger'>Error adding column $column_name to table $table: " . mysqli_error($conn) . "</div>";
+            }
+        }
+    }
 }
 
 echo '<div class="alert alert-info mt-3">Database initialization complete.</div>';

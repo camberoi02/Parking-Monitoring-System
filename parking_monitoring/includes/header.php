@@ -7,9 +7,6 @@
     <meta name="description" content="Parking management system for monitoring and managing parking spaces">
     <title><?php echo isset($title) ? $title : 'Parking Monitoring System'; ?></title>
     
-    <!-- Add the overscroll prevention script before any other scripts -->
-    <script src="assets/js/prevent-overscroll.js"></script>
-    
     <!-- Early theme detection to prevent flash of wrong theme -->
     <script>
         // Apply theme immediately before any content loads

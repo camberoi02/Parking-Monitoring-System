@@ -5,12 +5,19 @@ require_once '../parking_functions.php';
 
 // Check if user is admin
 if (!isset($_SESSION["role"]) || $_SESSION["role"] !== 'admin') {
+    header('Content-Type: application/json');
     echo json_encode(['success' => false, 'message' => 'Access denied. Admin privileges required.']);
     exit;
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    header('Content-Type: application/json');
     $response = ['success' => false, 'message' => ''];
+
+    if (!isset($_POST['action'])) {
+        echo json_encode(['success' => false, 'message' => 'No action specified']);
+        exit;
+    }
 
     switch ($_POST['action']) {
         case 'add_spot':
@@ -25,8 +32,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $spot_number = getNextSpotNumber($conn, $sector_id);
             
             // Check if spot number already exists
-            $check_sql = "SELECT id FROM parking_spots WHERE spot_number = '$spot_number'";
-            $check_result = mysqli_query($conn, $check_sql);
+            $check_sql = "SELECT id FROM parking_spots WHERE spot_number = ?";
+            $stmt = mysqli_prepare($conn, $check_sql);
+            if (!$stmt) {
+                $response['message'] = "Database error: " . mysqli_error($conn);
+                break;
+            }
+            
+            mysqli_stmt_bind_param($stmt, "s", $spot_number);
+            mysqli_stmt_execute($stmt);
+            $check_result = mysqli_stmt_get_result($stmt);
             
             if (mysqli_num_rows($check_result) > 0) {
                 // If duplicate found, try to find the next available number
@@ -36,9 +51,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 
                 // Try up to 100 next numbers
                 for ($i = $number + 1; $i <= $number + 100; $i++) {
-                    $try_spot_number = $base_letter . "-A" . $i;
-                    $check_sql = "SELECT id FROM parking_spots WHERE spot_number = '$try_spot_number'";
-                    $check_result = mysqli_query($conn, $check_sql);
+                    $try_spot_number = $base_letter . "-" . $i;
+                    $check_sql = "SELECT id FROM parking_spots WHERE spot_number = ?";
+                    $stmt = mysqli_prepare($conn, $check_sql);
+                    mysqli_stmt_bind_param($stmt, "s", $try_spot_number);
+                    mysqli_stmt_execute($stmt);
+                    $check_result = mysqli_stmt_get_result($stmt);
                     
                     if (mysqli_num_rows($check_result) == 0) {
                         $spot_number = $try_spot_number;
@@ -52,18 +70,32 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     break;
                 }
             }
+            mysqli_stmt_close($stmt);
             
             // Insert the new spot
-            $sql = "INSERT INTO parking_spots (spot_number, is_occupied, sector_id) VALUES ('$spot_number', 0, $sector_id)";
-            if (mysqli_query($conn, $sql)) {
+            $sql = "INSERT INTO parking_spots (spot_number, is_occupied, sector_id) VALUES (?, 0, ?)";
+            $stmt = mysqli_prepare($conn, $sql);
+            if (!$stmt) {
+                $response['message'] = "Error preparing statement: " . mysqli_error($conn);
+                break;
+            }
+            
+            mysqli_stmt_bind_param($stmt, "si", $spot_number, $sector_id);
+            if (mysqli_stmt_execute($stmt)) {
                 $spot_id = mysqli_insert_id($conn);
                 
                 // Get sector name
                 $sector_name = "Unknown";
-                $sector_query = "SELECT name FROM sectors WHERE id = $sector_id";
-                $sector_result = mysqli_query($conn, $sector_query);
-                if ($sector_result && $row = mysqli_fetch_assoc($sector_result)) {
+                $sector_query = "SELECT name FROM sectors WHERE id = ?";
+                $stmt_sector = mysqli_prepare($conn, $sector_query);
+                if ($stmt_sector) {
+                    mysqli_stmt_bind_param($stmt_sector, "i", $sector_id);
+                    mysqli_stmt_execute($stmt_sector);
+                    $sector_result = mysqli_stmt_get_result($stmt_sector);
+                    if ($row = mysqli_fetch_assoc($sector_result)) {
                     $sector_name = $row['name'];
+                    }
+                    mysqli_stmt_close($stmt_sector);
                 }
                 
                 // Log to audit trail
@@ -81,6 +113,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             } else {
                 $response['message'] = "Error adding parking spot: " . mysqli_error($conn);
             }
+            mysqli_stmt_close($stmt);
             break;
 
         case 'delete_spot':
@@ -91,12 +124,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             $spot_id = intval($_POST['spot_id']);
             
-            // Check if spot exists and get its details
-            $check_sql = "SELECT spot_number, is_occupied, 
-                                 COALESCE((SELECT 1 FROM transactions WHERE spot_id = parking_spots.id AND exit_time IS NULL LIMIT 1), 0) as is_in_use 
-                          FROM parking_spots 
-                          WHERE id = ?";
-                          
+            // Check if spot exists and if it's occupied
+            $check_sql = "SELECT spot_number, is_occupied FROM parking_spots WHERE id = ?";
             $stmt = mysqli_prepare($conn, $check_sql);
             if (!$stmt) {
                 $response['message'] = "Database error: " . mysqli_error($conn);
@@ -116,58 +145,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($row = mysqli_fetch_assoc($result)) {
                 $spot_number = $row['spot_number'];
                 
-                if ($row['is_occupied'] || $row['is_in_use']) {
-                    $response['message'] = "Cannot delete an occupied or in-use parking spot. Please check out the vehicle first.";
+                if ($row['is_occupied']) {
+                    $response['message'] = "Cannot delete this parking spot because it is currently occupied.";
                     mysqli_stmt_close($stmt);
                     break;
                 }
                 
-                // Check if there are any transactions
-                $check_transactions = "SELECT COUNT(*) as count FROM transactions WHERE spot_id = ?";
-                $stmt_trans = mysqli_prepare($conn, $check_transactions);
-                if (!$stmt_trans) {
-                    $response['message'] = "Database error: " . mysqli_error($conn);
-                    mysqli_stmt_close($stmt);
-                    break;
-                }
-                
-                mysqli_stmt_bind_param($stmt_trans, "i", $spot_id);
-                mysqli_stmt_execute($stmt_trans);
-                $result_trans = mysqli_stmt_get_result($stmt_trans);
-                $has_transactions = false;
-                
-                if ($result_trans && $row_trans = mysqli_fetch_assoc($result_trans)) {
-                    $has_transactions = $row_trans['count'] > 0;
-                }
-                mysqli_stmt_close($stmt_trans);
-                
-                // Delete transactions if they exist and confirmation is given
-                if ($has_transactions && isset($_POST['confirm_delete_with_history']) && $_POST['confirm_delete_with_history'] == '1') {
-                    $sql = "DELETE FROM transactions WHERE spot_id = ?";
-                    $stmt_del_trans = mysqli_prepare($conn, $sql);
-                    if (!$stmt_del_trans) {
-                        $response['message'] = "Error preparing transaction deletion: " . mysqli_error($conn);
-                        mysqli_stmt_close($stmt);
-                        break;
-                    }
-                    
-                    mysqli_stmt_bind_param($stmt_del_trans, "i", $spot_id);
-                    if (!mysqli_stmt_execute($stmt_del_trans)) {
-                        $response['message'] = "Error deleting transactions: " . mysqli_error($conn);
-                        mysqli_stmt_close($stmt_del_trans);
-                        mysqli_stmt_close($stmt);
-                        break;
-                    }
-                    mysqli_stmt_close($stmt_del_trans);
-                    
-                    logAudit($conn, 'delete', 'transactions', null, null, null, "All transactions deleted for spot $spot_id");
-                } else if ($has_transactions && (!isset($_POST['confirm_delete_with_history']) || $_POST['confirm_delete_with_history'] != '1')) {
-                    $response['message'] = "This spot has transaction history. Please confirm deletion of transaction history to proceed.";
-                    mysqli_stmt_close($stmt);
-                    break;
-                }
-                
-                // Delete the spot
+                // Delete the spot - transaction history will be preserved due to foreign key constraints
                 $sql = "DELETE FROM parking_spots WHERE id = ? AND is_occupied = 0";
                 $stmt_del = mysqli_prepare($conn, $sql);
                 if (!$stmt_del) {
@@ -182,11 +166,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         logAudit($conn, 'delete', 'parking_spots', $spot_id, null, null, "Parking spot deleted");
                         logAudit($conn, 'delete', 'parking_spots', $spot_id, 'spots_management', 
                                 "Parking spot $spot_number existed", 
-                                "Parking spot $spot_number deleted" . ($has_transactions ? " including transaction history" : "") . 
-                                " (Deleted by: Admin)");
+                                "Parking spot $spot_number deleted (Deleted by: Admin)");
                         
                         $response['success'] = true;
-                        $response['message'] = "Parking spot deleted successfully" . ($has_transactions ? " (including its transaction history)" : "");
+                        $response['message'] = "Parking spot deleted successfully. Transaction history has been preserved.";
                     } else {
                         $response['message'] = "Spot could not be deleted. It may be occupied or already deleted.";
                     }

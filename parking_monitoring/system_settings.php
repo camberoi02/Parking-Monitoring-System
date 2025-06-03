@@ -164,10 +164,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 // Get vehicle-specific rates
                 $motorcycle_base_fee = floatval($_POST['motorcycle_base_fee']);
                 $motorcycle_hourly_rate = floatval($_POST['motorcycle_hourly_rate']);
-                $motorcycle_overnight_fee = floatval($_POST['motorcycle_overnight_fee']);
                 $vehicle_base_fee = floatval($_POST['vehicle_base_fee']);
                 $vehicle_hourly_rate = floatval($_POST['vehicle_hourly_rate']);
-                $vehicle_overnight_fee = floatval($_POST['vehicle_overnight_fee']);
                 
                 // Get Pasig employee rates and toggle states
                 $pasig_motorcycle_base_fee = floatval($_POST['pasig_motorcycle_base_fee']);
@@ -187,10 +185,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     'overnight_fee' => $overnight_fee,
                     'motorcycle_base_fee' => $motorcycle_base_fee,
                     'motorcycle_hourly_rate' => $motorcycle_hourly_rate,
-                    'motorcycle_overnight_fee' => $motorcycle_overnight_fee,
                     'vehicle_base_fee' => $vehicle_base_fee,
                     'vehicle_hourly_rate' => $vehicle_hourly_rate,
-                    'vehicle_overnight_fee' => $vehicle_overnight_fee,
                     'pasig_motorcycle_base_fee' => $pasig_motorcycle_base_fee,
                     'pasig_vehicle_base_fee' => $pasig_vehicle_base_fee,
                     'pasig_motorcycle_hourly_rate' => $pasig_motorcycle_hourly_rate,
@@ -205,9 +201,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             VALUES ('$key', '$value') 
                             ON DUPLICATE KEY UPDATE setting_value = '$value'";
                     mysqli_query($conn, $sql);
-                    }
-                    
-                    $message = "Parking rates updated successfully.";
+                }
+                
+                $message = "Parking rates updated successfully.";
                 break;
                 
             case 'add_user':
@@ -956,7 +952,7 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                                                     <label for="vehicle_base_fee" class="form-label">Base Fee for First <?php echo $base_hours; ?> Hours (₱)</label>
                                                     <div class="input-group">
                                                         <span class="input-group-text">₱</span>
-                                                        <input type="number" step="0.01" min="0" class="form-control" id="vehicle_base_fee" name="vehicle_base_fee" value="40.00" required>
+                                                        <input type="number" step="0.01" min="0" class="form-control" id="vehicle_base_fee" name="vehicle_base_fee" value="<?php echo isset($settings['vehicle_base_fee']) ? $settings['vehicle_base_fee'] : '40.00'; ?>" required>
                                                     </div>
                                                 </div>
 
@@ -964,15 +960,7 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                                                     <label for="vehicle_hourly_rate" class="form-label">Hourly Rate (₱)</label>
                                                     <div class="input-group">
                                                         <span class="input-group-text">₱</span>
-                                                        <input type="number" step="0.01" min="0" class="form-control" id="vehicle_hourly_rate" name="vehicle_hourly_rate" value="20.00" required>
-                                                    </div>
-                                                </div>
-
-                                                <div class="mb-3">
-                                                    <label for="vehicle_overnight_fee" class="form-label">Overnight Fee (₱)</label>
-                                                    <div class="input-group">
-                                                        <span class="input-group-text">₱</span>
-                                                        <input type="number" step="0.01" min="0" class="form-control" id="vehicle_overnight_fee" name="vehicle_overnight_fee" value="100.00" required>
+                                                        <input type="number" step="0.01" min="0" class="form-control" id="vehicle_hourly_rate" name="vehicle_hourly_rate" value="<?php echo isset($settings['vehicle_hourly_rate']) ? $settings['vehicle_hourly_rate'] : '20.00'; ?>" required>
                                                     </div>
                                                 </div>
                                             </div>
@@ -988,7 +976,7 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                                                     <label for="motorcycle_base_fee" class="form-label">Base Fee for First <?php echo $base_hours; ?> Hours (₱)</label>
                                                     <div class="input-group">
                                                         <span class="input-group-text">₱</span>
-                                                        <input type="number" step="0.01" min="0" class="form-control" id="motorcycle_base_fee" name="motorcycle_base_fee" value="20.00" required>
+                                                        <input type="number" step="0.01" min="0" class="form-control" id="motorcycle_base_fee" name="motorcycle_base_fee" value="<?php echo isset($settings['motorcycle_base_fee']) ? $settings['motorcycle_base_fee'] : '20.00'; ?>" required>
                                                     </div>
                                                 </div>
 
@@ -996,15 +984,7 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                                                     <label for="motorcycle_hourly_rate" class="form-label">Hourly Rate (₱)</label>
                                                     <div class="input-group">
                                                         <span class="input-group-text">₱</span>
-                                                        <input type="number" step="0.01" min="0" class="form-control" id="motorcycle_hourly_rate" name="motorcycle_hourly_rate" value="10.00" required>
-                                                    </div>
-                                                </div>
-
-                                                <div class="mb-3">
-                                                    <label for="motorcycle_overnight_fee" class="form-label">Overnight Fee (₱)</label>
-                                                    <div class="input-group">
-                                                        <span class="input-group-text">₱</span>
-                                                        <input type="number" step="0.01" min="0" class="form-control" id="motorcycle_overnight_fee" name="motorcycle_overnight_fee" value="50.00" required>
+                                                        <input type="number" step="0.01" min="0" class="form-control" id="motorcycle_hourly_rate" name="motorcycle_hourly_rate" value="<?php echo isset($settings['motorcycle_hourly_rate']) ? $settings['motorcycle_hourly_rate'] : '10.00'; ?>" required>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1199,7 +1179,7 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                                             }
                                         }
                                     ?>
-                                        <tr class="align-middle">
+                                        <tr class="align-middle" data-sector-id="<?php echo $sector['id']; ?>">
                                             <td class="fw-medium"><?php echo htmlspecialchars($sector['name']); ?></td>
                                             <td><?php echo htmlspecialchars($sector['description']); ?></td>
                                             <td><?php echo $count; ?> spots</td>
@@ -1255,7 +1235,6 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                     </div>
                 </div>
                 <div class="card-body">
-                    
                     <?php if (!empty($parking_spots)): ?>
                         <div class="table-responsive">
                             <table class="table table-striped table-hover border">
@@ -1273,7 +1252,7 @@ if ($database_exists && function_exists('getNextSpotNumber')) {
                                             <td class="fw-medium"><?php echo htmlspecialchars($spot['spot_number']); ?></td>
                                             <td>
                                                 <?php if (!empty($spot['sector_name'])): ?>
-                                                    <span class="badge bg-primary rounded-pill px-3 py-2"><?php echo htmlspecialchars($spot['sector_name']); ?></span>
+                                                    <span class="badge bg-primary rounded-pill px-3 py-2" data-sector-id="<?php echo $spot['sector_id']; ?>"><?php echo htmlspecialchars($spot['sector_name']); ?></span>
                                                 <?php else: ?>
                                                     <span class="badge bg-secondary rounded-pill px-3 py-2">Default</span>
                                                 <?php endif; ?>
