@@ -218,11 +218,11 @@ class AuditPDF extends FPDF {
     }
 }
 
-// Get filter parameters
-$search_term = isset($_GET['search']) ? mysqli_real_escape_string($conn, $_GET['search']) : '';
+// Build search condition
 $search_condition = '';
 
-if (!empty($search_term)) {
+if (!empty($_GET['search'])) {
+    $search_term = mysqli_real_escape_string($conn, $_GET['search']);
     $search_condition = " AND (
         table_name LIKE '%$search_term%' OR 
         field_name LIKE '%$search_term%' OR 
@@ -235,12 +235,12 @@ if (!empty($search_term)) {
 // Date range filter
 if (!empty($_GET['date_from'])) {
     $date_from = mysqli_real_escape_string($conn, $_GET['date_from']);
-    $search_condition .= " AND timestamp >= '$date_from 00:00:00'";
+    $search_condition .= " AND created_at >= '$date_from 00:00:00'";
 }
 
 if (!empty($_GET['date_to'])) {
     $date_to = mysqli_real_escape_string($conn, $_GET['date_to']);
-    $search_condition .= " AND timestamp <= '$date_to 23:59:59'";
+    $search_condition .= " AND created_at <= '$date_to 23:59:59'";
 }
 
 // Action type filter
@@ -255,16 +255,18 @@ if (!empty($_GET['table_name'])) {
     $search_condition .= " AND table_name = '$table_name'";
 }
 
-// Username filters
+// Username filter
 if (!empty($_GET['username'])) {
     $username = mysqli_real_escape_string($conn, $_GET['username']);
-    $search_condition .= " AND username = '$username'";
+    $search_condition .= " AND u.username = '$username'";
 }
 
-// Get the audit logs
-$sql = "SELECT * FROM audit_logs 
-        WHERE 1=1 $search_condition
-        ORDER BY timestamp DESC";
+// Get audit log data
+$sql = "SELECT a.*, u.username 
+        FROM audit_trail a 
+        LEFT JOIN users u ON a.user_id = u.id 
+        WHERE 1=1 $search_condition 
+        ORDER BY created_at DESC";
 
 $result = mysqli_query($conn, $sql);
 $audit_logs = [];
@@ -301,6 +303,38 @@ if (!empty($appliedFilters)) {
     $pdf->Ln(5);
 }
 
+// Add filter information
+$pdf->SetFont('Arial', 'B', 10);
+$pdf->Cell(0, 8, 'Filter Information:', 0, 1, 'L');
+$pdf->SetFont('Arial', '', 10);
+
+if (!empty($_GET['date_from']) || !empty($_GET['date_to'])) {
+    $date_range = "Date Range: ";
+    if (!empty($_GET['date_from'])) {
+        $date_range .= "From " . $_GET['date_from'];
+    }
+    if (!empty($_GET['date_to'])) {
+        $date_range .= " To " . $_GET['date_to'];
+    }
+    $pdf->Cell(0, 8, $date_range, 0, 1, 'L');
+}
+
+if (!empty($_GET['action_type'])) {
+    $pdf->Cell(0, 8, "Action Type: " . $_GET['action_type'], 0, 1, 'L');
+}
+
+if (!empty($_GET['table_name'])) {
+    $pdf->Cell(0, 8, "Table: " . $_GET['table_name'], 0, 1, 'L');
+}
+
+if (!empty($_GET['username'])) {
+    $pdf->Cell(0, 8, "User: " . $_GET['username'], 0, 1, 'L');
+}
+
+if (!empty($_GET['search'])) {
+    $pdf->Cell(0, 8, "Search Term: " . $_GET['search'], 0, 1, 'L');
+}
+
 // Modify column widths to better fit content
 $headers = ['Date & Time', 'Action', 'Table', 'ID', 'Field', 'Old Value', 'New Value', 'User'];
 $widths = [35, 18, 25, 15, 30, 62, 62, 23]; // Increased date column width, balanced others
@@ -323,8 +357,8 @@ foreach ($audit_logs as $log) {
         $pdf->SetFillColor(255, 255, 255); // white
     }
 
-    // Format date and time
-    $dateTime = date('M d, Y g:i A', strtotime($log['timestamp']));
+    // Format timestamp
+    $timestamp = date('M d, Y g:i:s A', strtotime($log['created_at']));
     
     // Format action type with color
     $actionType = $log['action_type'];
@@ -371,7 +405,7 @@ foreach ($audit_logs as $log) {
     
     // Prepare row data
     $rowData = [
-        $dateTime,
+        $timestamp,
         strtoupper($actionType),
         $log['table_name'],
         $log['record_id'] ?? 'N/A',

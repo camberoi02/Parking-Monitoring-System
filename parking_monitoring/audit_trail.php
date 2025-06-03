@@ -34,30 +34,6 @@ if (!$database_exists) {
 
 mysqli_select_db($conn, DB_NAME);
 
-// Check if audit_logs table exists
-$result = mysqli_query($conn, "SHOW TABLES LIKE 'audit_logs'");
-if (mysqli_num_rows($result) == 0) {
-    // Create audit_logs table
-    $sql = "CREATE TABLE audit_logs (
-        id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
-        action_type ENUM('insert', 'update', 'delete') NOT NULL,
-        table_name VARCHAR(50) NOT NULL,
-        record_id INT NULL,
-        field_name VARCHAR(100) NULL,
-        old_value TEXT NULL,
-        new_value TEXT NULL,
-        user_id INT NULL,
-        username VARCHAR(50) NULL,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )";
-    
-    if (mysqli_query($conn, $sql)) {
-        echo "<div class='container mt-4'><div class='alert alert-success'>Audit logs table created successfully.</div></div>";
-    } else {
-        echo "<div class='container mt-4'><div class='alert alert-danger'>Error creating audit logs table: " . mysqli_error($conn) . "</div></div>";
-    }
-}
-
 // Pagination setup
 $records_per_page = 50;
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
@@ -80,12 +56,12 @@ if (!empty($search_term)) {
 // Date range filter
 if (!empty($_GET['date_from'])) {
     $date_from = mysqli_real_escape_string($conn, $_GET['date_from']);
-    $search_condition .= " AND timestamp >= '$date_from 00:00:00'";
+    $search_condition .= " AND created_at >= '$date_from 00:00:00'";
 }
 
 if (!empty($_GET['date_to'])) {
     $date_to = mysqli_real_escape_string($conn, $_GET['date_to']);
-    $search_condition .= " AND timestamp <= '$date_to 23:59:59'";
+    $search_condition .= " AND created_at <= '$date_to 23:59:59'";
 }
 
 // Action type filter
@@ -103,11 +79,11 @@ if (!empty($_GET['table_name'])) {
 // Username filter
 if (!empty($_GET['username'])) {
     $username = mysqli_real_escape_string($conn, $_GET['username']);
-    $search_condition .= " AND username = '$username'";
+    $search_condition .= " AND u.username = '$username'";
 }
 
 // Get total record count for pagination
-$count_sql = "SELECT COUNT(*) as total FROM audit_logs WHERE 1=1 $search_condition";
+$count_sql = "SELECT COUNT(*) as total FROM audit_trail a LEFT JOIN users u ON a.user_id = u.id WHERE 1=1 $search_condition";
 $count_result = mysqli_query($conn, $count_sql);
 $total_records = 0;
 if ($count_result && $row = mysqli_fetch_assoc($count_result)) {
@@ -116,9 +92,11 @@ if ($count_result && $row = mysqli_fetch_assoc($count_result)) {
 $total_pages = ceil($total_records / $records_per_page);
 
 // Get audit log data
-$sql = "SELECT * FROM audit_logs 
+$sql = "SELECT a.*, u.username 
+        FROM audit_trail a 
+        LEFT JOIN users u ON a.user_id = u.id 
         WHERE 1=1 $search_condition
-        ORDER BY timestamp DESC 
+        ORDER BY created_at DESC 
         LIMIT $offset, $records_per_page";
 
 $result = mysqli_query($conn, $sql);
@@ -130,7 +108,7 @@ if ($result) {
 }
 
 // Get unique table names for filter dropdown
-$tables_sql = "SELECT DISTINCT table_name FROM audit_logs ORDER BY table_name";
+$tables_sql = "SELECT DISTINCT table_name FROM audit_trail ORDER BY table_name";
 $tables_result = mysqli_query($conn, $tables_sql);
 $table_names = [];
 if ($tables_result) {
@@ -140,7 +118,7 @@ if ($tables_result) {
 }
 
 // Get unique usernames for filter dropdown
-$users_sql = "SELECT DISTINCT username FROM audit_logs WHERE username IS NOT NULL ORDER BY username";
+$users_sql = "SELECT DISTINCT u.username FROM audit_trail a LEFT JOIN users u ON a.user_id = u.id WHERE u.username IS NOT NULL ORDER BY u.username";
 $users_result = mysqli_query($conn, $users_sql);
 $usernames = [];
 if ($users_result) {
@@ -224,7 +202,7 @@ if ($users_result) {
                         <tbody>
                             <?php foreach ($audit_logs as $log): ?>
                                 <tr>
-                                    <td><?php echo date('M d, Y g:i:s A', strtotime($log['timestamp'])); ?></td>
+                                    <td><?php echo date('M d, Y g:i:s A', strtotime($log['created_at'])); ?></td>
                                     <td>
                                         <?php if ($log['action_type'] == 'insert'): ?>
                                             <span class="badge bg-success">INSERT</span>
