@@ -201,9 +201,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             VALUES ('$key', '$value') 
                             ON DUPLICATE KEY UPDATE setting_value = '$value'";
                     mysqli_query($conn, $sql);
-                }
-                
-                $message = "Parking rates updated successfully.";
+                    }
+                    
+                    $message = "Parking rates updated successfully.";
                 break;
                 
             case 'add_user':

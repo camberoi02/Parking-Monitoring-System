@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     let parkingSpotsSection = Array.from(document.querySelectorAll('.card-header h3'))
                         .find(header => header.textContent.trim() === 'Parking Spots Management')
                         ?.closest('.card');
-
+                    
                     if (parkingSpotsSection) {
                         let spotsTable = parkingSpotsSection.querySelector('table tbody');
                         

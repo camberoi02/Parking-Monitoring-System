@@ -344,7 +344,7 @@ if ($database_exists) {
                         <span class="input-group-text bg-light border-end-0">
                             <i class="fas fa-calendar-day text-primary"></i>
                         </span>
-                        <input type="text" class="form-control border-start-0 ps-0 datepicker" id="start_date" name="start_date" value="<?php echo $start_date; ?>">
+                        <input type="text" class="form-control border-start-0 ps-0 flatpickr-date" id="start_date" name="start_date" value="<?php echo $start_date; ?>">
                     </div>
                 </div>
                 <div class="col-md-4">
@@ -353,7 +353,7 @@ if ($database_exists) {
                         <span class="input-group-text bg-light border-end-0">
                             <i class="fas fa-calendar-check text-primary"></i>
                         </span>
-                        <input type="text" class="form-control border-start-0 ps-0 datepicker" id="end_date" name="end_date" value="<?php echo $end_date; ?>">
+                        <input type="text" class="form-control border-start-0 ps-0 flatpickr-date" id="end_date" name="end_date" value="<?php echo $end_date; ?>">
                     </div>
                 </div>
                 <div class="col-12 mt-3 d-flex justify-content-end">

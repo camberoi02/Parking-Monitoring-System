@@ -605,9 +605,46 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Handle customer type selection
+    // Function to update overnight fee display
+    function updateOvernightFeeDisplay() {
+        const isOvernight = document.getElementById('overnightParking').checked;
+        if (!isOvernight) return;
+
+        const vehicleType = document.getElementById('vehicleType').value;
+        const customerType = document.getElementById('customerType')?.value || 'private';
+        
+        // Fetch overnight fee from server
+        fetch(`get_overnight_fee.php?vehicle_type=${vehicleType}&customer_type=${customerType}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    let feeInfo = document.getElementById('overnightFeeInfo');
+                    if (!feeInfo) {
+                        feeInfo = document.createElement('div');
+                        feeInfo.id = 'overnightFeeInfo';
+                        feeInfo.className = 'mt-2 text-info small';
+                        const parkingTypeGroup = document.querySelector('[aria-label="Parking type options"]').parentNode;
+                        parkingTypeGroup.appendChild(feeInfo);
+                    }
+                    feeInfo.innerHTML = `<i class="fas fa-info-circle me-1"></i>Overnight fee: ₱${parseFloat(data.fee).toFixed(2)}`;
+                }
+            })
+            .catch(error => console.error('Error fetching overnight fee:', error));
+    }
+
+    // Handle vehicle type changes
+    const vehicleTypeSelect = document.getElementById('vehicleType');
+    if (vehicleTypeSelect) {
+        vehicleTypeSelect.addEventListener('change', updateOvernightFeeDisplay);
+    }
+
+    // Get customer type select element
     const customerTypeSelect = document.getElementById('customerType');
     if (customerTypeSelect) {
+        // Handle customer type changes for overnight fee
+        customerTypeSelect.addEventListener('change', updateOvernightFeeDisplay);
+        
+        // Handle customer type changes for payment options
         customerTypeSelect.addEventListener('change', function() {
             const isFreeParking = document.getElementById('freeParking');
             const isPaidParking = document.getElementById('paidParking');
@@ -623,14 +660,14 @@ document.addEventListener('DOMContentLoaded', function() {
             isPaidParking.disabled = false;
         });
     }
-    
+
     // Initialize payment option state on page load
     const paidParking = document.getElementById('paidParking');
     const isFreeField = document.getElementById('isFreeField');
     if (paidParking && paidParking.checked) {
         isFreeField.value = '0';
     }
-    
+
     // Handle payment option radio buttons
     document.querySelectorAll('input[name="payment_option"]').forEach(input => {
         input.addEventListener('change', function() {
@@ -642,11 +679,23 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-    
+
     // Handle parking type selection
     document.querySelectorAll('input[name="parking_type"]').forEach(input => {
         input.addEventListener('change', function() {
-            document.getElementById('isOvernightField').value = this.value === 'overnight' ? '1' : '0';
+            const isOvernightField = document.getElementById('isOvernightField');
+            const isOvernight = this.value === 'overnight';
+            isOvernightField.value = isOvernight ? '1' : '0';
+            
+            if (isOvernight) {
+                updateOvernightFeeDisplay();
+            } else {
+                // Remove overnight fee info if it exists
+                const feeInfo = document.getElementById('overnightFeeInfo');
+                if (feeInfo) {
+                    feeInfo.remove();
+                }
+            }
         });
     });
 });

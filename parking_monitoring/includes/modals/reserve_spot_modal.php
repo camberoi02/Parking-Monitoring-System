@@ -98,3 +98,120 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize datetime pickers for reservations using Flatpickr
+    const now = new Date();
+    const startDefault = new Date(now.getTime() + 30 * 60000); // 30 minutes from now
+    const endDefault = new Date(now.getTime() + 120 * 60000); // 2 hours from now
+    
+    // Common configuration for both pickers
+    const commonConfig = {
+        enableTime: true,
+        dateFormat: "Y-m-d H:i",
+        minuteIncrement: 15,
+        time_24hr: true,
+        allowInput: true,
+        disableMobile: true,
+        static: true,
+        appendTo: document.querySelector('#reserveSpotModal .modal-body'),
+        onOpen: function(selectedDates, dateStr, instance) {
+            setTimeout(() => {
+                const input = instance.element;
+                const calendar = instance.calendarContainer;
+                const inputRect = input.getBoundingClientRect();
+                
+                // Position below the input
+                calendar.style.position = 'fixed';
+                calendar.style.top = (inputRect.bottom + 2) + 'px';
+                calendar.style.left = inputRect.left + 'px';
+                calendar.style.width = input.offsetWidth + 'px';
+                
+                // Ensure the calendar is visible within the viewport
+                const calendarRect = calendar.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                if (calendarRect.bottom > viewportHeight) {
+                    calendar.style.top = (inputRect.top - calendarRect.height - 2) + 'px';
+                }
+            }, 0);
+        }
+    };
+    
+    // Start time picker
+    const reservationStartPicker = flatpickr("#reservationStartTime", {
+        ...commonConfig,
+        minDate: "today",
+        defaultDate: startDefault,
+        onChange: function(selectedDates) {
+            if (selectedDates[0]) {
+                // Update end time minDate when start time changes
+                reservationEndPicker.set('minDate', selectedDates[0]);
+                
+                // If end time is before or equal to new start time, update it
+                if (reservationEndPicker.selectedDates[0] <= selectedDates[0]) {
+                    // Set end time to 1.5 hours after new start time
+                    const newEndTime = new Date(selectedDates[0]);
+                    newEndTime.setMinutes(newEndTime.getMinutes() + 90);
+                    reservationEndPicker.setDate(newEndTime);
+                }
+            }
+        }
+    });
+    
+    // End time picker
+    const reservationEndPicker = flatpickr("#reservationEndTime", {
+        ...commonConfig,
+        minDate: endDefault,
+        defaultDate: endDefault
+    });
+    
+    // Update fee calculation when dates change
+    [reservationStartPicker, reservationEndPicker].forEach(picker => {
+        picker.config.onChange.push(() => calculateReservationFee());
+    });
+    
+    // Handle modal events
+    const reserveSpotModal = document.getElementById('reserveSpotModal');
+    reserveSpotModal.addEventListener('shown.bs.modal', function() {
+        // Reposition pickers when modal is shown
+        reservationStartPicker.redraw();
+        reservationEndPicker.redraw();
+    });
+    
+    reserveSpotModal.addEventListener('scroll', function() {
+        // Close pickers on modal scroll
+        reservationStartPicker.close();
+        reservationEndPicker.close();
+    });
+});
+
+// Function to calculate reservation fee
+function calculateReservationFee() {
+    const startTime = document.getElementById('reservationStartTime')._flatpickr.selectedDates[0];
+    const endTime = document.getElementById('reservationEndTime')._flatpickr.selectedDates[0];
+    
+    if (startTime && endTime) {
+        // Calculate hours difference
+        const hours = (endTime - startTime) / (1000 * 60 * 60);
+        const baseFee = 100; // Base reservation fee
+        const fee = Math.max(baseFee, hours * 20); // Minimum fee of 100
+        document.getElementById('reservationFee').value = fee.toFixed(2);
+    }
+}
+
+// Function to calculate rental fee
+function calculateRentalFee() {
+    const startDate = $('#rentalStartDate').datepicker('getDate');
+    const endDate = $('#rentalEndDate').datepicker('getDate');
+    
+    if (startDate && endDate) {
+        // Add your rental fee calculation logic here
+        const months = (endDate.getFullYear() - startDate.getFullYear()) * 12 + 
+                      (endDate.getMonth() - startDate.getMonth());
+        const monthlyRate = parseFloat($('#rentalRate').val()) || 3000;
+        const totalFee = months * monthlyRate;
+        $('#rentalRate').val(totalFee.toFixed(2));
+    }
+}
+</script>

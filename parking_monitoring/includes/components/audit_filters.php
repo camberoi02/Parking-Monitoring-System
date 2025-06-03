@@ -14,10 +14,10 @@
                 <div class="col-md-6">
                     <label class="form-label">Date Range</label>
                     <div class="input-group">
-                        <input type="text" class="form-control datepicker" name="date_from" id="dateFrom" placeholder="From date" 
+                        <input type="text" class="form-control flatpickr-date" name="date_from" id="dateFrom" placeholder="From date" 
                                value="<?php echo isset($_GET['date_from']) ? htmlspecialchars($_GET['date_from']) : ''; ?>">
                         <span class="input-group-text">to</span>
-                        <input type="text" class="form-control datepicker" name="date_to" id="dateTo" placeholder="To date"
+                        <input type="text" class="form-control flatpickr-date" name="date_to" id="dateTo" placeholder="To date"
                                value="<?php echo isset($_GET['date_to']) ? htmlspecialchars($_GET['date_to']) : ''; ?>">
                     </div>
                 </div>
@@ -78,9 +78,10 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize date pickers if not already initialized by the global script
     if (typeof flatpickr === 'function') {
-        flatpickr(".datepicker", {
+        flatpickr(".flatpickr-date", {
             dateFormat: "Y-m-d",
-            allowInput: true
+            allowInput: true,
+            position: "below"
         });
     }
     

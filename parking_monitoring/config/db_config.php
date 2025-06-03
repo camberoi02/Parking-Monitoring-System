@@ -25,8 +25,18 @@ function verify_db_schema($conn) {
         if (mysqli_num_rows($result) > 0) {
             // Add overnight fee settings if they don't exist
             $settings_to_check = [
-                'vehicle_overnight_fee' => '100.00',  // Default overnight fee for vehicles
-                'motorcycle_overnight_fee' => '50.00'  // Default overnight fee for motorcycles
+                'overnight_fee' => '500.00',  // Single overnight fee for all vehicles
+                'pasig_vehicle_hourly_enabled' => '0',  // Default to disabled for Pasig employees
+                'pasig_motorcycle_hourly_enabled' => '0',  // Default to disabled for Pasig employees
+                'pasig_vehicle_hourly_rate' => '20.00',  // Default hourly rate for Pasig employees (vehicles)
+                'pasig_motorcycle_hourly_rate' => '10.00',  // Default hourly rate for Pasig employees (motorcycles)
+                'pasig_vehicle_base_fee' => '50.00',  // Default base fee for Pasig employees (vehicles)
+                'pasig_motorcycle_base_fee' => '20.00',  // Default base fee for Pasig employees (motorcycles)
+                'vehicle_base_fee' => '40.00',  // Default base fee for regular customers (vehicles)
+                'motorcycle_base_fee' => '20.00',  // Default base fee for regular customers (motorcycles)
+                'vehicle_hourly_rate' => '20.00',  // Default hourly rate for regular customers (vehicles)
+                'motorcycle_hourly_rate' => '10.00',  // Default hourly rate for regular customers (motorcycles)
+                'base_hours' => '3'  // Default base hours
             ];
             
             foreach ($settings_to_check as $key => $default_value) {
@@ -92,7 +102,6 @@ function verify_db_schema($conn) {
             // Check if is_overnight column exists in parking_spots
             $result = mysqli_query($conn, "SHOW COLUMNS FROM parking_spots LIKE 'is_overnight'");
             if (mysqli_num_rows($result) == 0) {
-                // Add is_overnight column
                 mysqli_query($conn, "ALTER TABLE parking_spots ADD COLUMN is_overnight BOOLEAN NOT NULL DEFAULT 0");
                 echo "<div class='alert alert-success'>Database schema updated: Added is_overnight column to parking_spots table.</div>";
             }
@@ -208,6 +217,7 @@ function verify_db_schema($conn) {
                 mysqli_query($conn, "ALTER TABLE parking_spots ADD COLUMN reservation_fee DECIMAL(10,2) NULL");
                 echo "<div class='alert alert-success'>Database schema updated: Added reservation_fee column to parking_spots table.</div>";
             }
+            }
             
             // Check if transactions table exists
             $result = mysqli_query($conn, "SHOW TABLES LIKE 'transactions'");
@@ -305,10 +315,8 @@ function verify_db_schema($conn) {
                 // Check if is_overnight column exists in transactions
                 $result = mysqli_query($conn, "SHOW COLUMNS FROM transactions LIKE 'is_overnight'");
                 if (mysqli_num_rows($result) == 0) {
-                    // Add is_overnight column
                     mysqli_query($conn, "ALTER TABLE transactions ADD COLUMN is_overnight BOOLEAN NOT NULL DEFAULT 0");
                     echo "<div class='alert alert-success'>Database schema updated: Added is_overnight column to transactions table.</div>";
-                }
             }
         }
     }
@@ -633,10 +641,9 @@ function updateVehicleRates($conn, $vehicle_type, $base_fee, $hourly_rate, $over
         return false;
     }
     
-    // Update overnight fee
-    $overnight_fee_key = strtolower($vehicle_type) . '_overnight_fee';
+    // Update the single overnight fee (not vehicle-specific)
     $sql = "INSERT INTO settings (setting_key, setting_value) 
-            VALUES ('$overnight_fee_key', '$overnight_fee') 
+            VALUES ('overnight_fee', '$overnight_fee') 
             ON DUPLICATE KEY UPDATE setting_value = '$overnight_fee'";
     return mysqli_query($conn, $sql);
 }
@@ -649,7 +656,7 @@ function getVehicleOvernightFee($conn, $vehicle_type) {
     $result = mysqli_query($conn, "SHOW DATABASES LIKE '" . DB_NAME . "'");
     if (mysqli_num_rows($result) == 0) {
         // Database doesn't exist, return default rate
-        return $vehicle_type == 'Motorcycle' ? 50.00 : 100.00;
+        return 500.00;
     }
     
     mysqli_select_db($conn, DB_NAME);
@@ -658,21 +665,21 @@ function getVehicleOvernightFee($conn, $vehicle_type) {
     $result = mysqli_query($conn, "SHOW TABLES LIKE 'settings'");
     if (mysqli_num_rows($result) == 0) {
         // Settings table doesn't exist, return default value
-        return $vehicle_type == 'Motorcycle' ? 50.00 : 100.00;
+        return 500.00;
     }
     
-    // Get overnight fee from settings based on vehicle type
-    $setting_key = strtolower($vehicle_type) . '_overnight_fee';
-    $sql = "SELECT setting_value FROM settings WHERE setting_key = '$setting_key'";
+    // Get overnight fee from settings - always use the single overnight_fee setting
+    $sql = "SELECT setting_value FROM settings WHERE setting_key = 'overnight_fee'";
     $result = mysqli_query($conn, $sql);
     
     if (mysqli_num_rows($result) > 0) {
         $row = mysqli_fetch_assoc($result);
         return floatval($row['setting_value']);
-    } else {
-        // Default values if not found
-        return $vehicle_type == 'Motorcycle' ? 50.00 : 100.00;
     }
+    
+    // If no setting found, insert the default value and return it
+    mysqli_query($conn, "INSERT INTO settings (setting_key, setting_value) VALUES ('overnight_fee', '500.00')");
+    return 500.00;
 }
 
 // Run schema verification if we're not in the database initialization process

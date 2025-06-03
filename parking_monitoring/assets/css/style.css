@@ -946,3 +946,40 @@ footer {
         padding: 0.5rem 0.75rem;
     }
 }
+
+/* Flatpickr positioning fixes */
+.flatpickr-calendar {
+    z-index: 9999 !important;
+    position: fixed !important;
+}
+
+.modal .flatpickr-calendar {
+    position: absolute !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+}
+
+.modal .flatpickr-input {
+    position: relative;
+    z-index: 1;
+}
+
+.modal .input-group {
+    position: relative;
+}
+
+.modal-content {
+    overflow: visible !important;
+}
+
+.modal-open {
+    overflow: hidden;
+    padding-right: 0 !important;
+}
+
+.modal {
+    overflow-y: auto !important;
+}

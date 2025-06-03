@@ -312,26 +312,23 @@ function calculateDurationAndFee($conn, $entry_time, $is_free = 0, $vehicle_type
         $settings[$row['setting_key']] = floatval($row['setting_value']);
     }
 
-    // If overnight parking is selected, only charge the overnight fee
-    if ($is_overnight) {
-        $overnight_fee_key = strtolower($vehicle_type) . '_overnight_fee';
-        $overnight_fee = $settings[$overnight_fee_key] ?? ($vehicle_type === 'Motorcycle' ? 50.00 : 100.00);
-        return ['duration' => $duration, 'fee' => $overnight_fee];
-    }
-
-    // For regular parking, calculate based on vehicle type and customer type
+    // Initialize variables for fee calculation
     $base_fee = 0;
     $hourly_rate = 0;
     $base_hours = $settings['base_hours'] ?? 3;
+    $overnight_fee = $settings['overnight_fee'] ?? 500.00;
 
+    // Set rates based on customer type and vehicle type
     if ($customer_type === 'pasig_employee') {
         // Use Pasig employee rates
         if ($vehicle_type === 'Vehicle') {
             $base_fee = $settings['pasig_vehicle_base_fee'] ?? 50.00;
-            $hourly_rate = $settings['pasig_vehicle_hourly_rate'] ?? 0.00;
+            $hourly_enabled = isset($settings['pasig_vehicle_hourly_enabled']) && $settings['pasig_vehicle_hourly_enabled'] == '1';
+            $hourly_rate = $hourly_enabled ? ($settings['pasig_vehicle_hourly_rate'] ?? 0.00) : 0.00;
         } else { // Motorcycle
             $base_fee = $settings['pasig_motorcycle_base_fee'] ?? 20.00;
-            $hourly_rate = $settings['pasig_motorcycle_hourly_rate'] ?? 0.00;
+            $hourly_enabled = isset($settings['pasig_motorcycle_hourly_enabled']) && $settings['pasig_motorcycle_hourly_enabled'] == '1';
+            $hourly_rate = $hourly_enabled ? ($settings['pasig_motorcycle_hourly_rate'] ?? 0.00) : 0.00;
         }
     } else {
         // Use regular rates
@@ -344,7 +341,60 @@ function calculateDurationAndFee($conn, $entry_time, $is_free = 0, $vehicle_type
         }
     }
     
-    // Calculate total hours
+    // Check if the parking session involves overnight hours (10 PM to 8 AM)
+    if ($is_overnight) {
+        // Get the overnight fee from settings
+        $overnight_fee = $settings['overnight_fee'] ?? 500.00;
+        $total_fee = $overnight_fee;
+
+        // Check if parking extends beyond 8 AM
+        $now = new DateTime();
+        $overnight_end = clone $entry;
+        $overnight_end->setTime(8, 0); // 8:00 AM
+        
+        // If entry was before 8 AM, set overnight_end to 8 AM of the same day
+        // Otherwise, set it to 8 AM of the next day
+        if ($entry->format('H') >= 8) {
+            $overnight_end->modify('+1 day');
+        }
+
+        // If current time is past 8 AM, calculate additional hours
+        if ($now > $overnight_end) {
+            // Calculate hours from 8 AM to current time
+            $additional_interval = $now->diff($overnight_end);
+            $additional_hours = ($additional_interval->days * 24) + $additional_interval->h;
+            if ($additional_interval->i > 0) {
+                $additional_hours++; // Round up to the next hour
+            }
+
+            // Get the appropriate hourly rate based on customer type and vehicle type
+            if ($customer_type === 'pasig_employee') {
+                if ($vehicle_type === 'Vehicle') {
+                    $hourly_enabled = isset($settings['pasig_vehicle_hourly_enabled']) && $settings['pasig_vehicle_hourly_enabled'] == '1';
+                    $hourly_rate = $hourly_enabled ? ($settings['pasig_vehicle_hourly_rate'] ?? 0.00) : 0.00;
+                } else { // Motorcycle
+                    $hourly_enabled = isset($settings['pasig_motorcycle_hourly_enabled']) && $settings['pasig_motorcycle_hourly_enabled'] == '1';
+                    $hourly_rate = $hourly_enabled ? ($settings['pasig_motorcycle_hourly_rate'] ?? 0.00) : 0.00;
+                }
+            } else {
+                // Regular rates for private individuals
+                if ($vehicle_type === 'Vehicle') {
+                    $hourly_rate = $settings['vehicle_hourly_rate'] ?? 20.00;
+                } else { // Motorcycle
+                    $hourly_rate = $settings['motorcycle_hourly_rate'] ?? 10.00;
+                }
+            }
+
+            // Add hourly charges for time beyond 8 AM
+            if ($hourly_rate > 0) {
+                $total_fee += ($additional_hours * $hourly_rate);
+            }
+        }
+
+        return ['duration' => $duration, 'fee' => $total_fee];
+    }
+    
+    // For non-overnight parking, calculate regular fee
     $total_hours = ($interval->days * 24) + $interval->h;
     if ($interval->i > 0) {
         $total_hours++; // Round up to the next hour

@@ -92,3 +92,103 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize date pickers for rentals using Flatpickr
+    const now = new Date();
+    const nextMonth = new Date();
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    
+    // Common configuration for both pickers
+    const commonConfig = {
+        dateFormat: "Y-m-d",
+        allowInput: true,
+        disableMobile: true,
+        static: true,
+        appendTo: document.querySelector('#rentSpotModal .modal-body'),
+        onOpen: function(selectedDates, dateStr, instance) {
+            setTimeout(() => {
+                const input = instance.element;
+                const calendar = instance.calendarContainer;
+                const inputRect = input.getBoundingClientRect();
+                
+                // Position below the input
+                calendar.style.position = 'fixed';
+                calendar.style.top = (inputRect.bottom + 2) + 'px';
+                calendar.style.left = inputRect.left + 'px';
+                calendar.style.width = input.offsetWidth + 'px';
+                
+                // Ensure the calendar is visible within the viewport
+                const calendarRect = calendar.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                if (calendarRect.bottom > viewportHeight) {
+                    calendar.style.top = (inputRect.top - calendarRect.height - 2) + 'px';
+                }
+            }, 0);
+        }
+    };
+    
+    // Start date picker
+    const rentalStartPicker = flatpickr("#rentalStartDate", {
+        ...commonConfig,
+        minDate: "today",
+        defaultDate: now,
+        onChange: function(selectedDates) {
+            if (selectedDates[0]) {
+                // Update end date minDate when start date changes
+                rentalEndPicker.set('minDate', selectedDates[0]);
+                
+                // If end date is before or equal to new start date, update it
+                if (rentalEndPicker.selectedDates[0] <= selectedDates[0]) {
+                    // Set end date to one month after new start date
+                    const newEndDate = new Date(selectedDates[0]);
+                    newEndDate.setMonth(newEndDate.getMonth() + 1);
+                    rentalEndPicker.setDate(newEndDate);
+                }
+            }
+        }
+    });
+    
+    // End date picker
+    const rentalEndPicker = flatpickr("#rentalEndDate", {
+        ...commonConfig,
+        minDate: nextMonth,
+        defaultDate: nextMonth
+    });
+    
+    // Update fee calculation when dates change
+    [rentalStartPicker, rentalEndPicker].forEach(picker => {
+        picker.config.onChange.push(() => calculateRentalFee());
+    });
+    
+    // Handle modal events
+    const rentSpotModal = document.getElementById('rentSpotModal');
+    rentSpotModal.addEventListener('shown.bs.modal', function() {
+        // Reposition pickers when modal is shown
+        rentalStartPicker.redraw();
+        rentalEndPicker.redraw();
+    });
+    
+    rentSpotModal.addEventListener('scroll', function() {
+        // Close pickers on modal scroll
+        rentalStartPicker.close();
+        rentalEndPicker.close();
+    });
+});
+
+// Function to calculate rental fee
+function calculateRentalFee() {
+    const startDate = document.getElementById('rentalStartDate')._flatpickr.selectedDates[0];
+    const endDate = document.getElementById('rentalEndDate')._flatpickr.selectedDates[0];
+    
+    if (startDate && endDate) {
+        // Calculate months difference
+        const months = (endDate.getFullYear() - startDate.getFullYear()) * 12 + 
+                      (endDate.getMonth() - startDate.getMonth());
+        const monthlyRate = parseFloat(document.getElementById('rentalRate').value) || 3000;
+        const totalFee = months * monthlyRate;
+        document.getElementById('rentalRate').value = totalFee.toFixed(2);
+    }
+}
+</script>

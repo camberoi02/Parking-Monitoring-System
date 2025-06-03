@@ -135,7 +135,8 @@ if(mysqli_query($conn, $sql)){
         ['vehicle_hourly_rate', '20.00'],
         ['motorcycle_base_fee', '20.00'],
         ['motorcycle_hourly_rate', '10.00'],
-        ['base_hours', '3']
+        ['base_hours', '3'],
+        ['overnight_fee', '500.00']
     ];
 
     foreach ($default_settings as $setting) {
